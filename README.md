@@ -13,7 +13,7 @@
 > - 存档仅保存在用户浏览器本地（`localStorage`），不上传任何服务器；清除缓存、无痕模式或更换设备会丢失对局。
 
 ---
-
+**[在线体验GeniusTrader（Github Pages）](<https://wolfheimkehr.github.io/GeniusTrader/>)**
 ## 一、怎么跑起来
 
 没有构建步骤、没有依赖、没有后端，整个程序就在 `index.html` 一个文件里。
