@@ -9,6 +9,8 @@
 
 ---
 
+[在线体验GeniusTrader（Github Pages）]（https://wolfheimkehr.github.io/GeniusTrader/）
+
 ## 一、怎么跑起来
 
 没有任何构建步骤、没有依赖、没有后端。
