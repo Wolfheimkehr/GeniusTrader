@@ -215,6 +215,7 @@ state.ui = {rounds, showPower, newsDensity, allowDelist, fair, ma, band, vol, fl
 | v11.10 | 摘牌后估值线同步冻结 |
 | v11.11 | 资金流向指标 + 独立开关 |
 | v11.12 | 成交量与资金流分区显示，互不重叠 |
+| v11.13 | 经济滞胀修复，更换了经济状态的判断逻辑（更改为：阈值） |
 
 ---
 
