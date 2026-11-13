@@ -9,7 +9,7 @@
 
 ---
 
-[在线体验GeniusTrader（Github Pages）]（https://wolfheimkehr.github.io/GeniusTrader/）
+[在线体验GeniusTrader（Github Pages）]（<https://wolfheimkehr.github.io/GeniusTrader/>）
 
 ## 一、怎么跑起来
 
