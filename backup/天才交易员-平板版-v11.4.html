@@ -1,0 +1,3388 @@
+<!DOCTYPE html>
+<!--
+  天才交易员 · 宏观交易模拟盘（单文件前端项目）
+  ⚠️ 免责声明：本项目为编程与宏观经济教学演示工具。所有行情、K 线、宏观数据、利率、
+     新闻与事件均由浏览器端程序随机生成，与真实市场、真实机构、真实标的无关；
+     不接入任何行情源、交易接口或资金账户；不构成任何投资建议，亦不承诺任何收益。
+     请勿将模拟结果用于现实投资决策。现实交易（含融资、杠杆）的风险请自行评估。
+  存档仅保存在用户浏览器本地（localStorage），不上传服务器。
+-->
+
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>天才交易员 v11.4 · ST 风险警示股（涨跌停板与摘帽机制）</title>
+<style>
+  :root{
+    --bg:#0b0e14; --panel:#151a23; --panel2:#1c2230; --line:#2a3242;
+    --text:#e8edf5; --muted:#8a95a8; --up:#f0544c; --down:#26c281; --gold:#f5c451; --blue:#4da3ff;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%}
+  body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;display:flex;flex-direction:column;align-items:center;min-height:100vh;padding:16px}
+  .wrap{width:100%;max-width:480px;display:flex;flex-direction:column;gap:12px}
+
+  .topbar{display:flex;justify-content:space-between;align-items:center;padding:14px 16px;background:var(--panel);border:1px solid var(--line);border-radius:16px}
+  .title{font-size:18px;font-weight:700;letter-spacing:1px}
+  .title span{color:var(--gold)}
+  .badge{font-size:12px;color:var(--muted);border:1px solid var(--line);padding:4px 10px;border-radius:999px}
+  #vpBadge{white-space:nowrap}
+
+  .stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:10px 12px}
+  .stat .label{font-size:11px;color:var(--muted);margin-bottom:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .stat .value{white-space:nowrap}
+  .stat .value{font-size:16px;font-weight:700;font-variant-numeric:tabular-nums}
+  .value.up{color:var(--up)} .value.down{color:var(--down)}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:14px 16px}
+  .card-title{font-size:13px;color:var(--muted);margin-bottom:10px;letter-spacing:1px}
+  .mini-tag{float:right;font-size:10.5px;letter-spacing:0;color:var(--muted);border:1px solid var(--line);
+    border-radius:6px;padding:1px 6px;background:var(--panel2);font-variant-numeric:tabular-nums}
+  .mini-tag.warn{color:#f0b36a;border-color:rgba(240,179,106,.45);background:rgba(240,179,106,.08)}
+
+  /* 指标条 */
+  .macro-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px 16px}
+  .mi{display:flex;flex-direction:column;gap:5px}
+  .mi .mi-head{display:flex;justify-content:space-between;font-size:12px;color:var(--muted)}
+  .mi .mi-val{font-weight:700;font-variant-numeric:tabular-nums}
+  .mi-bar{position:relative;height:6px;border-radius:4px;background:var(--panel2);overflow:hidden}
+  .mi-bar .fill{position:absolute;top:0;height:100%;border-radius:4px}
+  .mi-bar .fill.pos{background:var(--up);left:50%}
+  .mi-bar .fill.neg{background:var(--down);right:50%}
+  .mi-bar::after{content:'';position:absolute;left:50%;top:0;bottom:0;width:1px;background:var(--line)}
+
+  /* 利率债 */
+  .rate-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+  .rate-box{background:var(--panel2);border-radius:12px;padding:10px;text-align:center}
+  .rate-box .rl{font-size:11px;color:var(--muted);margin-bottom:4px}
+  .rate-box .rv{font-size:15px;font-weight:700;font-variant-numeric:tabular-nums}
+  .rate-mode{margin-top:10px;display:flex;justify-content:space-between;font-size:12px;color:var(--muted)}
+  .rate-mode b{color:var(--blue)}
+
+  /* 预期差 */
+  .exp-row{display:flex;justify-content:space-between;gap:10px;font-size:12px;padding:6px 0}
+  .exp-row .k{color:var(--muted);flex:none}
+  .exp-row .v{text-align:right;line-height:1.5}
+  .tag-buy{color:var(--up)} .tag-sell{color:var(--down)} .tag-neutral{color:var(--muted)}
+
+  /* 板块 tab */
+  .sectors{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}
+  .sector{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:9px 4px;text-align:center;cursor:pointer}
+  .sector .sn{font-size:12px;font-weight:600;margin-bottom:3px}
+  .sector .sc{font-size:11px;font-variant-numeric:tabular-nums}
+  .sector.active{border-color:var(--gold);background:rgba(245,196,81,.1)}
+  .stock-chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+  .stock-chip{flex:0 1 auto;min-width:112px;background:var(--panel2);border:1px solid var(--line);border-radius:9px;
+    padding:6px 9px;font-size:11.5px;color:var(--muted);cursor:pointer;display:flex;align-items:center;gap:8px}
+  .stock-chip.on{border-color:var(--gold);background:rgba(245,196,81,.1);color:var(--text)}
+  .stock-chip .scn{font-size:11.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .stock-chip .scc{font-size:11px;font-variant-numeric:tabular-nums;margin-left:auto}
+  /* 大手模式：政策工具箱 */
+  .policy-box{display:none;margin-top:10px;padding-top:12px;border-top:1px dashed var(--line);gap:9px;
+    grid-column:1/-1;grid-template-columns:1fr}
+  .policy-box.show{display:grid}
+  .pol-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .pol-k{font-size:11.5px;color:var(--muted);min-width:78px}
+  .pol-val{font-size:12.5px;color:var(--gold);font-variant-numeric:tabular-nums;min-width:50px;text-align:center}
+  .pol-step{padding:4px 10px;font-size:13px;line-height:1}
+  .pol-meter{flex:1;min-width:120px;height:6px;border-radius:3px;background:rgba(138,149,168,.18);overflow:hidden}
+  .pol-meter span{display:block;height:100%;width:0;background:var(--gold);transition:width .25s}
+  .pol-read{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+  .pol-read b{color:var(--text);font-weight:600}
+  .stock-chip.etf .scn{color:var(--gold)}
+  .etf-mark{font-style:normal;font-size:9.5px;padding:0 3px;border-radius:3px;margin-left:3px;
+    color:var(--gold);border:1px solid rgba(245,196,81,.45);vertical-align:1px}
+  .chip-note{font-size:10.5px;color:var(--muted);opacity:.75;margin-top:6px;line-height:1.5}
+
+  .sc.up{color:var(--up)} .sc.down{color:var(--down)}
+
+  .quote-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+  .coin-name{font-size:15px;color:var(--muted)}
+  .coin-price{font-size:30px;font-weight:800;font-variant-numeric:tabular-nums}
+  .change{font-size:14px;font-weight:600;padding:3px 10px;border-radius:8px}
+  .change.up{color:var(--up);background:rgba(38,194,129,.12)}
+  .change.down{color:var(--down);background:rgba(231,76,60,.12)}
+  .chart-box{position:relative;width:100%;height:160px;margin:6px 0}
+  canvas{width:100%;height:100%;display:block}
+  .chart-toolbar{display:flex;justify-content:space-between;align-items:center;margin:2px 0 4px;gap:8px}
+  .chart-range{display:flex;gap:6px}
+  .chart-range button{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:4px 10px;font-size:12px;color:var(--muted);cursor:pointer}
+  .chart-range button.active{color:var(--gold);border-color:var(--gold);background:rgba(245,196,81,.1)}
+  .chart-stat{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+  .chart-toolbar{flex-wrap:wrap}
+  .round-chip{font-size:11px;color:var(--muted);border:1px solid var(--line);border-radius:8px;padding:4px 9px;font-variant-numeric:tabular-nums;white-space:nowrap}
+  /* 叠加指标 / 设置 通用 chip */
+  .chip-row{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+  .chip-label{font-size:11px;color:var(--muted);margin-right:2px}
+  .chip{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:5px 10px;font-size:12px;color:var(--muted);cursor:pointer;user-select:none;white-space:nowrap;transition:all .15s}
+  .chip.on{color:var(--gold);border-color:var(--gold);background:rgba(245,196,81,.12)}
+  .c-ind{margin-bottom:6px}
+  /* ===== 吸底交易条 ===== */
+  .trade-dock{position:fixed;left:0;right:0;bottom:0;z-index:65;background:rgba(20,24,31,.97); backdrop-filter:blur(8px);
+    border-top:1px solid var(--line);padding:7px 12px calc(7px + env(safe-area-inset-bottom,0px));
+    box-shadow:0 -8px 24px rgba(0,0,0,.5)}
+  .dock-top{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:6px;gap:8px}
+  .dock-name{font-size:12px;color:var(--muted)}
+  .dock-ratio{display:flex;align-items:center;gap:4px;font-size:10.5px;color:var(--muted)}
+  .dock-ratio i{font-style:normal;margin-right:2px}
+  .dock-ratio button{background:var(--panel2);border:1px solid var(--line);border-radius:7px;
+    color:var(--muted);font-size:11px;padding:4px 7px;cursor:pointer;font-variant-numeric:tabular-nums}
+  .dock-ratio button.on{color:var(--gold);border-color:var(--gold);background:rgba(245,196,81,.12)}
+  .dock-price{font-size:17px;font-weight:700;font-variant-numeric:tabular-nums}
+  .dock-chg{font-size:12px;font-variant-numeric:tabular-nums;margin-left:6px}
+  .dock-in{max-width:920px;margin:0 auto}
+  .dock-btns{display:grid;grid-template-columns:1.2fr 1.2fr 1fr 0.95fr;gap:7px}
+  .dock-btns2{display:none;grid-template-columns:1fr 1fr 1fr;gap:7px;margin-top:6px}
+  .dock-btns2.show{display:grid}
+  .btn-sub{background:var(--panel2);border:1px solid var(--line);border-radius:9px;color:var(--text);font-size:12px;padding:8px 0;cursor:pointer}
+  .btn-sub:disabled{opacity:.4}
+  .dock-btns button{border:none;border-radius:10px;padding:10px 0;font-size:13px;font-weight:600;cursor:pointer}
+  .dock-limit{background:var(--panel2);color:var(--text);border:1px solid var(--line)!important}
+  .trade-dock button:disabled{opacity:.4}
+  .wrap{padding-bottom:152px}
+  /* ===== 限价挂单 ===== */
+  .ord-wrap{margin-top:10px;padding-top:10px;border-top:1px solid var(--line)}
+  .ord-title{display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--muted);margin-bottom:6px}
+  .ord-list{display:flex;flex-direction:column;gap:5px}
+  .ord-item{display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--panel2);
+    border:1px solid var(--line);border-radius:8px;padding:6px 9px;font-size:11.5px}
+  .ord-item b{font-variant-numeric:tabular-nums;font-weight:600}
+  .ord-x{background:none;border:none;color:var(--muted);font-size:11px;cursor:pointer;padding:0 3px}
+  .ord-empty{font-size:11px;color:var(--muted);padding:2px 0}
+  /* 挂单浮层：底部弹出，键盘弹起时自动贴到键盘上沿 */
+  .sheet-mask{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:80;display:none}
+  .sheet-mask.show{display:block}
+  .ord-sheet{position:fixed;left:50%;bottom:0;width:min(100%,560px);z-index:81;
+    transform:translate(-50%,110%);transition:transform .22s ease,bottom .12s ease;
+    background:var(--panel);border:1px solid var(--line);border-bottom:none;
+    border-radius:18px 18px 0 0;padding:12px 16px calc(16px + env(safe-area-inset-bottom,0px));
+    max-height:88vh;overflow-y:auto;-webkit-overflow-scrolling:touch}
+  .ord-sheet.open{transform:translate(-50%,0)}
+  .sheet-head{display:flex;align-items:center;justify-content:space-between;font-size:13px;margin-bottom:10px}
+  .sheet-head b{font-weight:600}
+  .sheet-price{font-style:normal;color:var(--muted);font-size:12px;margin-left:8px;font-variant-numeric:tabular-nums}
+  .ord-sheet .ord-line{margin-bottom:9px}
+  .ord-sheet .ord-input{padding:11px 12px;font-size:16px}
+  .ord-line{display:flex;align-items:center;gap:7px;margin-bottom:7px;flex-wrap:wrap}
+  .ord-input{flex:1;min-width:88px;background:var(--panel);border:1px solid var(--line);border-radius:8px;
+    color:var(--text);padding:7px 9px;font-size:13px;font-variant-numeric:tabular-nums}
+  .mini{background:var(--panel);border:1px solid var(--line);border-radius:7px;color:var(--muted);
+    font-size:11px;padding:6px 8px;cursor:pointer}
+  .mini.on{color:var(--gold);border-color:var(--gold)}
+  .ord-go{flex:1;background:var(--gold);color:#1a1a1a;border:none;border-radius:9px;padding:9px 0;font-size:13px;font-weight:700;cursor:pointer}
+  .ord-tip{font-size:10.5px;color:var(--muted);line-height:1.5}
+  .help-btn{width:26px;height:26px;border-radius:50%;background:var(--panel2);border:1px solid var(--line);color:var(--muted);font-size:13px;cursor:pointer}
+  .set-tools{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+  .presim{display:none;position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:70;
+    width:min(92vw,560px);background:var(--panel);border:1px solid var(--gold);
+    border-radius:14px;padding:12px 14px;box-shadow:0 12px 32px rgba(0,0,0,.55)}
+  .presim.show{display:block}
+  .presim-txt{font-size:12px;color:var(--muted);margin-bottom:8px;font-variant-numeric:tabular-nums}
+  .presim-bar{height:6px;border-radius:4px;background:var(--panel2);overflow:hidden}
+  .presim-bar i{display:block;height:100%;width:0%;border-radius:4px;background:linear-gradient(90deg,var(--gold),#f0a93b);transition:width .12s linear}
+  #btnBuy:disabled,#btnSell:disabled,#btnClose:disabled,#btnAdd:disabled,#btnReduce:disabled,#btnCloseAll:disabled{opacity:.4;cursor:not-allowed}
+  .tool-btn{background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:7px 12px;font-size:12px;color:var(--text);cursor:pointer}
+  .tool-btn:hover{border-color:var(--gold);color:var(--gold)}
+  .welcome{position:fixed;inset:0;background:rgba(5,7,12,.78);backdrop-filter:blur(8px);display:none;align-items:center;justify-content:center;padding:20px;z-index:60}
+  .welcome.show{display:flex}
+  .welcome-box{width:100%;max-width:620px;max-height:88vh;overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:22px 20px}
+  .welcome-box h2{font-size:20px;margin-bottom:6px}
+  .welcome-box h2 span{color:var(--gold)}
+  .welcome-sub{font-size:12px;color:var(--muted);margin-bottom:16px}
+  .wsec{margin-bottom:14px}
+  .wsec h3{font-size:13px;color:var(--gold);margin-bottom:6px}
+  .wsec p,.wsec li{font-size:12.5px;line-height:1.75;color:#c3cad6}
+  .wsec ol,.wsec ul{padding-left:18px}
+  .wsec b{color:var(--text)}
+  .wsec-risk{border-top:1px dashed var(--line);padding-top:12px}
+  .wsec-risk h3{color:#e08a7a}
+  .wsec-risk li{color:#a9b2c0}
+  .modal-risk{font-size:11px;color:var(--muted);line-height:1.6;margin:10px 0 12px}
+  .foot-note{grid-column:1/-1;font-size:11px;line-height:1.75;color:#7d8797;padding:18px 4px 8px;border-top:1px solid var(--line);margin-top:6px}
+  .foot-note b{color:#9aa4b4}
+  .wstart{width:100%;padding:12px;border-radius:12px;border:none;background:var(--gold);color:#20180a;font-size:15px;font-weight:700;cursor:pointer;margin-top:6px;position:sticky;bottom:0;box-shadow:0 -14px 18px 10px rgba(12,16,24,.92)}
+  /* 播放控制 */
+  .play-bar{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:2px 0 8px}
+  .play-bar button{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:5px 11px;font-size:12px;color:var(--text);cursor:pointer;user-select:none}
+  .play-bar button.active{border-color:var(--gold);color:var(--gold);background:rgba(245,196,81,.12)}
+  .play-bar .spacer{flex:1}
+  .set-row{margin-bottom:10px}
+  .set-k{font-size:12px;color:var(--muted);margin-bottom:6px}
+  .set-note{font-size:11px;color:var(--muted);line-height:1.6;margin-top:6px}
+  @media (min-width:900px){ .set-inner{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;align-items:start} .set-row{margin-bottom:0} }
+  .ticker{display:flex;flex-wrap:wrap;gap:10px 14px;font-size:12px;color:var(--muted);padding:4px 2px 0;font-variant-numeric:tabular-nums}
+  .ticker b{color:var(--text)}
+
+  /* 资讯 */
+  .news-wrap{position:relative;min-height:0;flex:1;display:flex;flex-direction:column}
+  .news{display:flex;flex-direction:column;gap:8px;max-height:176px;overflow-y:auto;scrollbar-width:thin;
+    min-height:0;flex:1;overscroll-behavior-y:contain;overscroll-behavior-x:contain;scrollbar-gutter:stable;
+    touch-action:pan-y;-webkit-overflow-scrolling:touch}
+  .news-fade{position:absolute;left:0;right:0;height:26px;pointer-events:none;opacity:0;transition:opacity .18s ease;z-index:2}
+  .news-fade.top{top:0;background:linear-gradient(to bottom, var(--panel) 12%, transparent)}
+  .news-fade.bottom{bottom:0;background:linear-gradient(to top, var(--panel) 12%, transparent)}
+  .news-fade.show{opacity:1}
+  .news::-webkit-scrollbar{width:8px}
+  .news::-webkit-scrollbar-thumb{background:rgba(138,149,168,.45);border-radius:4px}
+  .news::-webkit-scrollbar-thumb:hover{background:rgba(138,149,168,.65)}
+  .news::-webkit-scrollbar-track{background:transparent}
+  .news-empty{font-size:12px;color:var(--muted);padding:14px 10px;text-align:center;background:var(--panel2);border-radius:10px}
+  .news-row{display:flex;gap:10px;padding:9px 10px;background:var(--panel2);border-radius:10px;align-items:flex-start}
+  .news-tag{flex:none;font-size:11px;font-weight:700;padding:3px 8px;border-radius:6px;white-space:nowrap}
+  .news-tag.buy{color:var(--up);background:rgba(38,194,129,.12)}
+  .news-tag.sell{color:var(--down);background:rgba(231,76,60,.12)}
+  .news-tag.neutral{color:var(--muted);background:rgba(138,149,168,.12)}
+  .news-tag.policy{color:var(--gold);background:rgba(212,175,55,.14)}
+  .news-tag.st{color:#1a1208;background:#e9a13b;font-weight:800}
+  /* 风险警示股标记：红底白字，和正常个股一眼分开 */
+  .st-mark{font-style:normal;font-size:10px;font-weight:800;letter-spacing:.5px;color:#1a1208;
+    background:#e9a13b;padding:1px 4px;border-radius:4px;margin-right:4px;vertical-align:1px}
+  .st-risk{font-size:11px;color:var(--warn,#e8a33d);margin-left:6px;font-weight:600}
+  .news-body{flex:1;min-width:0}
+  .news-title{font-size:13px;line-height:1.5}
+  .news-meta{font-size:11px;color:var(--muted);margin-top:3px}
+
+  /* 盘口 */
+  .book{display:grid;grid-template-columns:1fr 0.9fr 1fr;gap:8px}
+  .book-col{display:flex;flex-direction:column;gap:6px}
+  .book-col.side-r{align-items:flex-end}
+  .book-row{display:flex;gap:8px;font-size:13px;font-variant-numeric:tabular-nums;width:100%}
+  .book-row .pk{color:var(--muted);font-size:11px;width:14px}
+  .book-row .pp{flex:1;font-weight:600}
+  .book-row .pq{color:var(--muted)}
+  .book-col.side-l .pp{color:var(--up)}
+  .book-col.side-r .pp{color:var(--down)}
+  .book-mid{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px}
+  .book-mid .mp{font-size:22px;font-weight:800;font-variant-numeric:tabular-nums}
+  .book-mid .ml{font-size:11px;color:var(--muted)}
+  .power{margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}
+  .power-bar{display:grid;grid-template-columns:1fr 1fr;gap:0;height:10px;border-radius:6px;overflow:hidden;background:var(--panel2)}
+  .power-bull{background:var(--up);height:100%}
+  .power-bear{background:var(--down);height:100%}
+  .power-label{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-top:6px}
+  .power-label .b{color:var(--up)} .power-label .s{color:var(--down)}
+
+  /* 组合持仓 */
+  .pos-head{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-bottom:8px}
+  .pos-list{display:flex;flex-direction:column;gap:6px}
+  .pos-item{display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:var(--panel2);border-radius:10px;font-size:12px}
+  .pos-item .pi-main{line-height:1.5}
+  .pos-item .pi-name{font-weight:600}
+  .pos-item .pi-sub{color:var(--muted);font-size:11px}
+  .pos-item .pi-pnl{font-weight:700;font-variant-numeric:tabular-nums}
+  .pos-empty{font-size:12px;color:var(--muted);padding:10px;text-align:center}
+
+  .ratios{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin-top:10px}
+  .ratio{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:10px 0;text-align:center;font-size:13px;color:var(--muted);cursor:pointer}
+  .ratio.active{color:var(--gold);border-color:var(--gold);background:rgba(245,196,81,.1)}
+
+  .actions{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+  button{border:none;border-radius:16px;padding:16px 6px;font-size:15px;font-weight:700;cursor:pointer;letter-spacing:1px;transition:transform .08s,opacity .15s;font-family:inherit}
+  button:active{transform:scale(.96)}
+  button:disabled{opacity:.35;cursor:not-allowed}
+  .btn-up{background:var(--up);color:#04281a}
+  .btn-down{background:var(--down);color:#3a0a06}
+  .btn-close{background:var(--gold);color:#3a2a04}
+  .btn-reset{background:var(--panel2);color:var(--muted);border:1px solid var(--line)}
+
+  .overlay{position:fixed;inset:0;background:rgba(5,8,12,.86);backdrop-filter:blur(4px);display:none;align-items:center;justify-content:center;padding:24px;z-index:20}
+  .overlay.show{display:flex}
+  .modal{background:var(--panel);border:1px solid var(--line);border-radius:22px;padding:28px 24px;width:100%;max-width:380px;text-align:center}
+  .modal h2{font-size:24px;margin-bottom:8px}
+  .modal .rank{font-size:15px;color:var(--gold);margin-bottom:14px;letter-spacing:1px}
+  .modal p{font-size:14px;color:var(--muted);line-height:1.7;margin-bottom:20px}
+  .modal .final{font-size:32px;font-weight:800;margin-bottom:6px}
+  .toast{position:fixed;top:24px;left:50%;transform:translateX(-50%);background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:10px 18px;font-size:14px;opacity:0;transition:opacity .2s;z-index:30;pointer-events:none;max-width:90vw;text-align:center}
+  .toast.show{opacity:1}
+  ::-webkit-scrollbar{height:4px;width:4px}
+
+  /* 操作按钮组：手机端纵向堆叠，与原间距一致 */
+  .action-stack{display:flex;flex-direction:column;gap:12px}
+
+  /* ================= 窄屏 <420px：收紧内边距 ================= */
+  @media (max-width:420px){
+    body{padding:12px}
+    .wrap{gap:10px}
+    .stats{gap:6px}
+    .stat{padding:8px 9px}
+    .stat .label{font-size:10px}
+    .stat .value{font-size:14px}
+    .rate-box{padding:8px 6px}
+    .rate-box .rv{font-size:13px}
+    .sector .sn{font-size:11px}
+    .coin-price{font-size:26px}
+  }
+
+  /* ================= 平板 ≥768px：双栏 ================= */
+  @media (min-width:480px){
+    body{padding:20px}
+    .wrap{
+      max-width:1024px;
+      display:grid;
+      grid-template-columns:1fr 1fr;
+      grid-auto-rows:min-content;
+      gap:14px;
+      align-items:start;
+      grid-template-areas:
+        "top     top"
+        "stats   stats"
+        "macro   macro"
+        "rates   exp"
+        "sectors sectors"
+        "quote   quote"
+        "news    book"
+        "pos     pos"
+        "set     set";
+    }
+    .c-top{grid-area:top}
+    .c-stats{grid-area:stats}
+    .c-macro{grid-area:macro}
+    .c-rates{grid-area:rates;align-self:start}
+    .c-exp{grid-area:exp}
+    .c-sectors{grid-area:sectors}
+    .c-quote{grid-area:quote}
+    .c-news{grid-area:news}
+    .c-book{grid-area:book}
+    .c-pos{grid-area:pos}
+    .c-set{grid-area:set}
+
+    /* 大屏可读性增强 */
+    .title{font-size:20px}
+    .stat .value{font-size:17px}
+    .card{padding:16px 18px}
+    .coin-price{font-size:34px}
+    .chart-box{height:230px}
+    .news{max-height:300px}
+    .macro-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+    .sectors{grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}
+    .sector{padding:12px 6px}
+    .sector .sn{font-size:13px}
+    .sector .sc{font-size:12px}
+    button{padding:18px 8px}
+  }
+
+  /* ================= 极窄双栏 480~559px：再省空间 ================= */
+  @media (min-width:480px) and (max-width:559px){
+    body{padding:10px}
+    .wrap{gap:10px}
+    .card{padding:11px}
+    .topbar{padding:11px 12px}
+    .title{font-size:16px}
+    .rate-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+    .rate-box{padding:7px 4px}
+    .rate-box .rl{font-size:9px}
+    .rate-box .rv{font-size:11px}
+    .rate-mode{font-size:9px}
+    .mi .mi-head{font-size:10px}
+    .sector{padding:9px 2px}
+    .sector .sn{font-size:10px}
+    .sector .sc{font-size:9px}
+    .exp-row{font-size:10px}
+    .book-row{font-size:11px}
+    .pos-item{font-size:10px}
+    .news-title{font-size:11px}
+    button{padding:13px 3px;font-size:12px}
+    .ratio{font-size:10px;padding:9px 0}
+    .chart-box{height:180px}
+    .coin-price{font-size:26px}
+  }
+
+  /* ================= 窄双栏 560~767px：紧凑排布 ================= */
+  @media (min-width:560px) and (max-width:767px){
+    body{padding:14px}
+    .wrap{gap:12px}
+    .card{padding:13px 13px}
+    .card-title{font-size:12px;margin-bottom:8px}
+    .mi .mi-head{font-size:11px}
+    .rate-box{padding:8px 5px}
+    .rate-box .rl{font-size:10px;line-height:1.3}
+    .rate-box .rv{font-size:12px}
+    .rate-mode{font-size:10px;gap:6px}
+    .exp-row{font-size:11px;padding:5px 0}
+    .pos-head{font-size:11px;flex-wrap:wrap;gap:4px}
+    .pos-item{font-size:11px;padding:7px 8px}
+    .book-row{font-size:12px;gap:6px}
+    .book-mid .mp{font-size:19px}
+    .book-mid .ml{font-size:10px}
+    .news-title{font-size:12px}
+    .news-meta{font-size:10px}
+    .sector{padding:10px 3px}
+    .sector .sn{font-size:11px}
+    .sector .sc{font-size:10px}
+    button{padding:15px 4px;font-size:13px;letter-spacing:0}
+    .ratio{font-size:11px;padding:11px 0}
+    .coin-price{font-size:28px}
+    .chart-box{height:200px}
+    .stats{gap:6px}
+    .stat{padding:8px 9px}
+    .stat .value{font-size:14px}
+    .stat .label{font-size:10px}
+  }
+
+  /* ================= 桌面 ≥1180px：三栏 ================= */
+  @media (min-width:1180px){
+    body{padding:28px}
+    .wrap{
+      max-width:1440px;
+      grid-template-columns:1fr 1fr 1fr;
+      gap:16px;
+      grid-template-areas:
+        "top    top    top"
+        "stats  stats  stats"
+        "macro  rates  exp"
+        "sectors sectors sectors"
+        "quote  quote  news"
+        "book   pos    pos"
+        "set    set    set";
+    }
+    /* 同排卡片等高，指标在卡片内纵向居中填满 */
+    .wrap{align-items:stretch}
+    .c-macro{display:flex;flex-direction:column}
+    .c-macro .macro-grid{flex:1;grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-rows:1fr;align-content:stretch}
+    .c-macro .mi{justify-content:center}
+    .c-rates{display:flex;flex-direction:column}
+    .c-rates .rate-grid{flex:1;align-content:center}
+    .c-exp{display:flex;flex-direction:column;justify-content:space-between}
+    .c-quote{grid-area:quote}
+    /* 资讯卡片限高，条目多时在卡片内部滚动；不随内容撑整行 */
+    .c-news{align-self:stretch;display:flex;flex-direction:column;max-height:520px;min-height:0}
+    .c-news .news{max-height:none;flex:1 1 0;min-height:0;overflow-y:auto}
+
+    .title{font-size:22px}
+    .stat{padding:14px 16px}
+    .stat .value{font-size:19px}
+    .stat .label{font-size:12px}
+    .card{padding:18px 20px}
+    .card-title{font-size:14px}
+    .mi .mi-head{font-size:13px}
+    .coin-price{font-size:40px}
+    .chart-box{height:300px}
+    .rate-box{padding:14px 8px}
+    .rate-box .rv{font-size:17px}
+    .exp-row{font-size:13px;padding:8px 0}
+    .book-row{font-size:14px}
+    .book-mid .mp{font-size:26px}
+    .pos-item{font-size:13px}
+    button{padding:20px 10px;font-size:16px}
+    .ratio{padding:14px 0}
+  }
+
+  /* ================= 超宽屏 ≥1600px ================= */
+  @media (min-width:1600px){
+    .wrap{max-width:1680px}
+    .chart-box{height:340px}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="topbar c-top">
+    <div class="title">天才<span>交易员</span></div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <button class="help-btn" id="btnHelp">?</button>
+      <div class="badge" id="vpBadge">v9.7 · 正在检测视口…</div>
+    </div>
+  </div>
+
+  <div class="presim" id="preSimBox">
+    <div class="presim-txt" id="preSimTxt">正在预模拟历史市场…</div>
+    <div class="presim-bar"><i id="preSimFill"></i></div>
+  </div>
+
+  <div class="stats c-stats">
+    <div class="stat"><div class="label">总资产</div><div class="value" id="totalAsset">10,000.00</div></div>
+    <div class="stat"><div class="label">可用现金</div><div class="value" id="cash">10,000.00</div></div>
+    <div class="stat"><div class="label">持仓市值</div><div class="value" id="posVal">0.00</div></div>
+    <div class="stat"><div class="label">收益率</div><div class="value" id="rate">0.00%</div></div>
+  </div>
+
+  <!-- 宏观经济背景 -->
+  <div class="card c-macro">
+    <div class="card-title">宏观经济背景</div>
+    <div class="macro-grid">
+      <div class="mi"><div class="mi-head"><span>增长动能</span><span class="mi-val" id="gGrowth">0</span></div><div class="mi-bar" id="barGrowth"></div></div>
+      <div class="mi"><div class="mi-head"><span>通胀压力</span><span class="mi-val" id="gInflation">0</span></div><div class="mi-bar" id="barInflation"></div></div>
+      <div class="mi"><div class="mi-head"><span>货币立场</span><span class="mi-val" id="gLiquidity">0</span></div><div class="mi-bar" id="barLiquidity"></div></div>
+      <div class="mi"><div class="mi-head"><span>财政立场</span><span class="mi-val" id="gPolicy">0</span></div><div class="mi-bar" id="barPolicy"></div></div>
+    </div>
+  </div>
+
+  <!-- 利率与债券 -->
+  <div class="card c-rates">
+    <div class="card-title">利率与债券市场</div>
+    <div class="rate-grid">
+      <div class="rate-box"><div class="rl">10Y 国债</div><div class="rv" id="rateLong">2.85%</div></div>
+      <div class="rate-box"><div class="rl">短端政策利率</div><div class="rv" id="rateShort">2.00%</div></div>
+      <div class="rate-box"><div class="rl">期限利差</div><div class="rv" id="spread">0.85%</div></div>
+      <div class="rate-box"><div class="rl">债市指数</div><div class="rv" id="bondIdx">100.00</div></div>
+      <div class="rate-box"><div class="rl">联动模式</div><div class="rv" id="modeText" style="font-size:12px">均衡</div></div>
+      <div class="rate-box"><div class="rl">债市情绪</div><div class="rv" id="bondFlow" style="font-size:12px">资金均衡</div></div>
+    </div>
+  </div>
+
+  <!-- 预期差 -->
+  <div class="card c-exp">
+    <div class="card-title">市场预期与预期差</div>
+    <div class="exp-row"><span class="k">一致预期</span><span class="v" id="expMain">经济平稳运行</span></div>
+    <div class="exp-row"><span class="k">预期差</span><span class="v" id="gapText">暂无偏差</span></div>
+    <div class="exp-row"><span class="k">预期透支度</span><span class="v" id="overExp">0%</span></div>
+  </div>
+
+  <!-- 板块切换 -->
+  <div class="c-sectors">
+    <div class="sectors" id="sectors"></div>
+    <div class="stock-chips" id="stockChips"></div>
+    <div class="chip-note">板块为指数基金（ETF），只能做多；旗下个股可双向交易。指数涨跌经 β 传导到个股，指数 K 线用于判断板块大势</div>
+  </div>
+
+  <!-- 行情 -->
+  <div class="card c-quote">
+    <div class="quote-head">
+      <div class="coin-name" id="coinName">—</div>
+      <div class="change" id="changeTag">—</div>
+    </div>
+    <div class="coin-price" id="price">100.00</div>
+    <div class="play-bar">
+      <button id="btnPause">暂停</button>
+      <button data-speed="1" class="active">1×</button>
+      <button data-speed="2">2×</button>
+      <button data-speed="4">4×</button>
+      <div class="spacer"></div>
+      <div class="round-chip" id="dayChip">第 1 天</div>
+    </div>
+    <div class="chip-row c-ind" id="periodChips">
+      <span class="chip-label">图表视图</span>
+      <div class="chip" data-period="tick">分时</div>
+      <div class="chip on" data-period="day">日K</div>
+      <div class="chip" data-period="week">周K</div>
+      <div class="chip" data-period="month">月K</div>
+    </div>
+    <div class="chip-row c-ind" id="indChips">
+      <span class="chip-label">叠加指标</span>
+      <div class="chip on" data-ind="fair">估值线</div>
+      <div class="chip on" data-ind="ma">均线</div>
+      <div class="chip" data-ind="band" title="20 周期均线 ± 2 倍标准差；每 25 秒约成形">布林带</div>
+      <div class="chip" data-ind="vol">成交量</div>
+      <div class="chip on" data-ind="cost">成本线</div>
+    </div>
+    <div class="chart-toolbar">
+      <div class="chart-range" id="chartRange">
+        <button data-r="20">近20</button>
+        <button data-r="60" class="active">近60</button>
+        <button data-r="200">全部</button>
+      </div>
+      <div class="round-chip" id="roundChip">回合 0/20</div>
+      <div class="chart-stat" id="chartStat"></div>
+    </div>
+    <div class="chart-box"><canvas id="chart"></canvas></div>
+    <div class="ticker">
+      <span>今开 <b id="open">100.00</b></span>
+      <span>最高 <b id="high">100.00</b></span>
+      <span>最低 <b id="low">100.00</b></span>
+      <span>成交 <b id="volume">0</b></span>
+      <span>昨收 <b id="turnover">0.00</b></span>
+    </div>
+  </div>
+
+  <!-- 资讯 -->
+  <div class="card c-news">
+    <div class="card-title">市场资讯 · 宏观 / 行业 / 个股 <span class="mini-tag">上下滚动回看</span></div>
+    <div class="news-wrap">
+      <div class="news" id="news"></div>
+      <div class="news-fade top" id="newsFadeTop"></div>
+      <div class="news-fade bottom" id="newsFadeBot"></div>
+    </div>
+  </div>
+
+  <!-- 盘口与多空 -->
+  <div class="card c-book">
+    <div class="card-title">盘口与多空博弈 <span id="depthTag" class="mini-tag">深度 1.0×</span></div>
+    <div class="book">
+      <div class="book-col side-l" id="bids"></div>
+      <div class="book-mid"><div class="mp" id="midPrice">100.00</div><div class="ml">最新价</div></div>
+      <div class="book-col side-r" id="asks"></div>
+    </div>
+    <div class="power" id="powerBox">
+      <div class="power-bar"><div class="power-bull" id="powerBull"></div><div class="power-bear" id="powerBear"></div></div>
+      <div class="power-label"><span class="b">多头 <span id="bullVal">0</span></span><span class="s">空头 <span id="bearVal">0</span></span></div>
+    </div>
+  </div>
+
+  <!-- 组合持仓 -->
+  <div class="card c-pos">
+    <div class="pos-head"><span>多板块持仓组合（可对冲）</span><span>组合波动 <b id="volRate">0.00%</b></span></div>
+    <div class="pos-list" id="posList"></div>
+    <div class="ord-wrap">
+      <div class="ord-title"><span>限价挂单（价格触及自动成交）</span><span id="ordCount">0 / 6</span></div>
+      <div class="ord-list" id="ordList"></div>
+
+    </div>
+  </div>
+
+  <div class="card c-set">
+    <div class="card-title">对局设置</div>
+    <div class="set-inner">
+    <div class="set-row">
+      <div class="set-k">每日拍数（每 N 拍合成一根 K 线）</div>
+      <div class="chip-row" id="barChips">
+        <div class="chip" data-bar="5">5 拍</div>
+        <div class="chip on" data-bar="10">10 拍</div>
+        <div class="chip" data-bar="20">20 拍</div>
+        <div class="chip" data-bar="30">30 拍</div>
+      </div>
+      <div class="set-note">拍数是游戏最小节拍，1 拍 = 一个 tick。拍数越少，一根 K 线走得越快、行情越碎片；拍数越多，一天走得越慢、K 线越平滑。</div>
+    </div>
+    <div class="set-row">
+      <div class="set-k">目标交易笔数（回合）</div>
+      <div class="chip-row" id="roundChips">
+        <div class="chip on" data-round="20">20 笔</div>
+        <div class="chip" data-round="30">30 笔</div>
+        <div class="chip" data-round="50">50 笔</div>
+        <div class="chip" data-round="100">100 笔</div>
+        <div class="chip" data-round="0">无限制</div>
+      </div>
+      <div class="set-note">达到目标笔数后自动结算评级；选「无限制」可一直交易。修改后点「重新开始」重置牌局生效。</div>
+    </div>
+    <div class="set-row">
+      <div class="set-k">开局预模拟历史</div>
+      <div class="chip-row" id="preChips">
+        <div class="chip" data-pre="0">不预演</div>
+        <div class="chip on" data-pre="40">40 天</div>
+        <div class="chip" data-pre="80">80 天</div>
+        <div class="chip" data-pre="120">120 天</div>
+      </div>
+      <div class="set-note">开局先自动跑一段历史行情，跑完才解锁交易；预演的 K 线、宏观周期与资讯全部保留。</div>
+    </div>
+    <div class="set-row">
+      <div class="set-k">意外事件密度（黑天鹅 / 行业 / 公司 / 传闻）</div>
+      <div class="chip-row" id="evChips">
+        <div class="chip on" data-ev="2">标准</div>
+        <div class="chip" data-ev="1">清淡</div>
+        <div class="chip" data-ev="3">嘈杂</div>
+      </div>
+      <div class="set-note">越嘈杂，随机事件越多：板块与个股更容易被突发消息推出趋势，也更容易被传闻骗。清淡模式下噪音显著减少，更适合练基本盘。</div>
+    </div>
+    <div class="set-row">
+      <div class="set-k">资讯密度（推送节奏）</div>
+      <div class="chip-row" id="newsChips">
+        <div class="chip on" data-nd="slim">精简</div>
+        <div class="chip" data-nd="normal">标准</div>
+        <div class="chip" data-nd="full">详细</div>
+      </div>
+      <div class="set-note">只影响「推送多少条资讯」，不改变事件对价格的作用。精简约每 4–5 拍一条，突发消息与政策仍会即时出现；详细则几乎逐条推送。</div>
+    </div>
+    <div class="set-row">
+      <div class="set-k">多空博弈条</div>
+      <div class="chip-row">
+        <div class="chip on" id="togglePower">显示中</div>
+      </div>
+    </div>
+    <div class="set-row" style="margin-bottom:0">
+      <div class="set-k">大手模式（政策工具箱）</div>
+      <div class="chip-row"><div class="chip" id="togglePolicy">关闭</div></div>
+      <div class="set-note">开启后可亲自调节财政支出、税率、支出结构、货币政策与供给冲击，观察政策如何经内部／外部时滞传导到股价、利率与债券；关闭后这一整套设置隐藏，且完全不参与定价。</div>
+    </div>
+
+    <div class="policy-box" id="policyBox">
+      <div class="pol-row">
+        <div class="pol-k">快捷模板</div>
+        <div class="chip-row" id="polPreset">
+          <div class="chip" data-preset="stable">稳增长</div>
+          <div class="chip" data-preset="taxcut">减税惠民</div>
+          <div class="chip" data-preset="industry">产业扶持</div>
+          <div class="chip" data-preset="tighten">降温紧缩</div>
+          <div class="chip" data-preset="stagflation">滞胀应对</div>
+          <div class="chip" data-preset="rescue">危机救援</div>
+        </div>
+      </div>
+      <div class="pol-read" id="polPresetNote">一键套用整套政策组合，仍照常走内部／外部时滞；套用后手动微调任一项，模板即退出高亮。</div>
+      <div class="pol-row">
+        <div class="pol-k">财政支出强度</div>
+        <div class="chip pol-step" data-pol="spend_down">−</div>
+        <div class="pol-val" id="polSpend">1.00×</div>
+        <div class="chip pol-step" data-pol="spend_up">＋</div>
+        <div class="pol-read">中性 1.00×，0.70–1.30×</div>
+      </div>
+      <div class="pol-row">
+        <div class="pol-k">综合税率</div>
+        <div class="chip pol-step" data-pol="tax_down">−</div>
+        <div class="pol-val" id="polTax">1.00×</div>
+        <div class="chip pol-step" data-pol="tax_up">＋</div>
+        <div class="pol-read">降税拉动需求，加税改善赤字</div>
+      </div>
+      <div class="pol-row">
+        <div class="pol-k">支出结构</div>
+        <div class="chip-row" id="polTilt">
+          <div class="chip on" data-tilt="neutral">均衡</div>
+          <div class="chip" data-tilt="infra">基建</div>
+          <div class="chip" data-tilt="welfare">民生</div>
+          <div class="chip" data-tilt="tech">产业补贴</div>
+        </div>
+      </div>
+      <div class="pol-row">
+        <div class="pol-k">政策利率</div>
+        <div class="chip-row" id="polRate">
+          <div class="chip" data-rate="cut">降息</div>
+          <div class="chip on" data-rate="hold">维持</div>
+          <div class="chip" data-rate="hike">加息</div>
+        </div>
+      </div>
+      <div class="pol-row">
+        <div class="pol-k">流动性投放</div>
+        <div class="chip-row" id="polLiq">
+          <div class="chip" data-liq="ease">宽松</div>
+          <div class="chip on" data-liq="neutral">中性</div>
+          <div class="chip" data-liq="tight">收紧</div>
+        </div>
+      </div>
+      <div class="pol-row">
+        <div class="pol-k">供给冲击</div>
+        <div class="chip-row">
+          <div class="chip" data-shock="oil">能源涨价</div>
+          <div class="chip" data-shock="chip">技术断供</div>
+          <div class="chip" data-shock="dereg">解除管制</div>
+        </div>
+        <div class="pol-read" id="polShock">当前无供给冲击</div>
+      </div>
+      <div class="pol-row">
+        <div class="pol-k">传导进度</div>
+        <div class="pol-meter"><span id="polFill"></span></div>
+        <div class="pol-read" id="polLag">内部时滞 0 拍</div>
+      </div>
+      <div class="pol-row">
+        <div class="pol-read" id="polBook">赤字率 — · 债务率 —</div>
+      </div>
+      <div class="set-note" id="polTip">政策先"落地"（内部时滞）再"见效"（外部时滞），所以刚调完不会立刻拉涨；力度过猛会推高通胀与债务率，反过来抬升利率、压制估值。</div>
+    </div>
+    </div>
+    <div class="set-tools">
+      <button class="tool-btn" id="btnReset">重新开始</button>
+      <button class="tool-btn" id="btnShare">分享战绩</button>
+      <button class="tool-btn" id="btnExport">导出对局日志</button>
+      <button class="tool-btn" id="btnClearSave">清除存档</button>
+      <span style="font-size:11px;color:var(--muted)">每 5 拍自动存档，刷新页面自动恢复；点「重新开始」会清空存档与日志。</span>
+    </div>
+  </div>
+
+  <div class="sheet-mask" id="ordMask"></div>
+  <div class="ord-sheet" id="ordSheet">
+    <div class="sheet-head">
+      <span>限价挂单 · <b id="ordSecName">科技</b><i class="sheet-price" id="ordCur">100.00</i></span>
+      <button class="ord-x" id="ordCancel">取消</button>
+    </div>
+    <div class="ord-line">
+      <div class="chip-row" id="ordSide">
+        <div class="chip on" data-side="1">买入做多</div>
+        <div class="chip" data-side="-1">卖出做空</div>
+      </div>
+    </div>
+    <div class="ord-line">
+      <input id="ordPrice" class="ord-input" type="number" inputmode="decimal" step="0.01" placeholder="目标价">
+      <button class="mini" id="ordQ1">−1%</button>
+      <button class="mini" id="ordQ2">现价</button>
+      <button class="mini" id="ordQ3">+1%</button>
+    </div>
+    <div class="ord-line">
+      <div class="chip-row" id="ordRatio">
+        <span class="chip-label">仓位</span>
+        <div class="chip" data-r="0.1">轻 10%</div>
+        <div class="chip on" data-r="0.3">半 30%</div>
+        <div class="chip" data-r="0.5">重 50%</div>
+      </div>
+    </div>
+    <div class="ord-line"><span class="ord-tip" id="ordAmt">预计占用 3,000.00</span></div>
+    <div class="ord-line"><span class="ord-tip" id="ordHint">选择一个目标价，价格触及即自动成交</span></div>
+    <div class="ord-line">
+      <button class="ord-go" id="ordSubmit">按当前仓位比例挂单</button>
+    </div>
+    <div class="ord-tip">挂单不占用资金，成交时才扣款；最多同时 6 笔。也可以直接点 K 线图上某个价位来设目标价。</div>
+  </div>
+
+  <div class="trade-dock" id="tradeDock">
+    <div class="dock-in">
+      <div class="dock-top">
+        <span class="dock-name" id="dockName">科技 · 最新价</span>
+        <span class="dock-ratio" id="dockRatio">
+          <i>仓位</i>
+          <button data-r="0.1">10%</button>
+          <button data-r="0.3">30%</button>
+          <button data-r="0.5">50%</button>
+        </span>
+        <span><span class="dock-price" id="dockPrice">100.00</span><span class="dock-chg" id="dockChg">+0.00%</span></span>
+      </div>
+      <div class="dock-btns">
+        <button class="btn-up" id="btnBuy">做多</button>
+        <button class="btn-down" id="btnSell">做空</button>
+        <button class="btn-close" id="btnClose">平仓</button>
+        <button class="dock-limit" id="btnLimit">挂单</button>
+      </div>
+      <div class="dock-btns2" id="dockSub">
+        <button class="btn-sub" id="btnAdd">加仓 30%</button>
+        <button class="btn-sub" id="btnReduce">减仓一半</button>
+        <button class="btn-sub" id="btnCloseAll">全部平仓</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot-note">
+    <b>天才交易员</b> · 宏观交易模拟盘（教学演示）。本页所有行情、K 线、宏观数据与新闻均由浏览器端程序随机生成，
+    与真实市场无关；不接入任何真实行情或交易接口，不涉及任何资金，<b>不构成任何投资建议</b>。
+    模拟盘不含融资与杠杆功能，现实融资融券的保证金、强平与计息规则与此完全不同，请勿照此操作。
+    存档仅保存在本机浏览器，不上传服务器。
+  </div>
+</div>
+
+<div class="overlay" id="overlay">
+  <div class="modal">
+    <h2 id="modalTitle">交易结束</h2>
+    <div class="rank" id="modalRank"></div>
+    <div class="final" id="modalFinal"></div>
+    <p id="modalComment"></p>
+    <p class="modal-risk">以上为模拟盘结果 · 行情与收益均为虚构，不代表真实交易能力，不构成投资建议</p>
+    <button class="btn-up" style="width:100%" id="btnAgain">再来一局</button>
+    <button class="tool-btn" style="width:100%;margin-top:8px" id="btnShareResult">分享这局战绩</button>
+  </div>
+</div>
+
+<div class="welcome" id="welcome">
+  <div class="welcome-box">
+    <h2>天才<span>交易员</span> · 宏观交易模拟盘</h2>
+    <div class="welcome-sub">一个用宏观基本面、利率债、预期差与对冲盘驱动的单人对局</div>
+
+    <div class="wsec">
+      <h3>你在做什么</h3>
+      <p>五个板块（科技 / 消费 / 金融 / 能源 / 债券）各有一份实时报价。你只做两件事：<b>判断方向和仓位</b>，以及在合适的时机平掉。总资产从 10,000 起步，打满目标笔数后结算评级。</p>
+    </div>
+
+    <div class="wsec">
+      <h3>价格为什么动</h3>
+      <p>每个板块的价格由四股力量推着走：<b>宏观基本面</b>（增长、流动性、财政、情绪）、<b>利率贴现</b>（长端利率上行压估值）、<b>预期差</b>（数据超预期或不及预期）、<b>多空博弈</b>（买盘卖盘的力量对比）。债券走反向逻辑：利率上、债价跌，因此它是最好的对冲工具。</p>
+    </div>
+
+    <div class="wsec">
+      <h3>图表怎么看</h3>
+      <ul>
+        <li><b>分时</b>：逐拍实时曲线，配均价线与昨收线，看当下强弱</li>
+        <li><b>日 / 周 / 月 K</b>：一根 K 线是一个交易日 / 5 日 / 20 日，看趋势与位置</li>
+        <li><b>估值线（黄虚线）</b>：宏观算出的合理价，价格在它上方就是高估</li>
+        <li><b>均线 / 布林带</b>：趋势与波动区间；<b>成交量</b>：放量才有真行情</li>
+        <li><b>成本线（白虚线）</b>：你的持仓成本，一眼看出浮盈浮亏</li>
+      </ul>
+    </div>
+
+    <div class="wsec">
+      <h3>节奏与设置</h3>
+      <p>「每日拍数」决定一天由几拍组成（拍是最小节拍），「1× / 2× / 4×」调速，「暂停」可从容看盘再下单。对局设置里可改目标笔数、多空博弈条显隐，还能设定「开局预演」——先自动跑 40/80/120 个交易日的历史行情，跑完才解锁交易。对局会自动存档，刷新不丢；结束后可分享战绩、导出 CSV 日志。「意外事件密度」可控制黑天鹅、行业 / 公司事件与传闻的多寡——调高后行情更容易被消息推着走，也更常被假消息骗。「资讯密度」控制推送节奏（精简约每 4–5 拍一条，标准、详细依次更密），它只影响推送、不改变事件对价格的作用；传闻会标明来源与可信度，过几拍才揭晓「证实 / 辟谣」；盘口深度决定价差与滑点，深度低于 0.75× 时大单成交会明显吃亏。</p>
+      <p>每个板块还各有一只<b>风险警示股（ST）</b>——它们是基本面已经坏掉的公司：盈利中枢只有正常公司六成左右，所以"股价便宜"不是错杀，而是价值陷阱（合理估值本身就低）。ST 股有自己的一套规律：<b>涨跌幅限制只有 ±5%</b>（普通股 ±10%），消息对价格的影响更强、盘口更薄，容易出现涨停封板与连续跌停；资讯走专属通道，围绕年报亏损、审计意见、债务违约、监管立案、保壳重组与摘帽预期。界面上的红色「ST / *ST」标记就是风险警示状态，详情里还给出「退市风险 N/100」。每逢财报季结算：风险累积到 82 会从 ST 升级为 *ST（退市风险警示）；盈利中枢回到 0.90 以上且风险降到 30 以下则<b>摘帽</b>——涨跌幅放开到 ±10%，估值向新中枢收敛，这是 ST 股最大的一次重估机会。反过来，长期亏损的普通公司也会被戴帽，你可以亲眼看着一只正常股变成 ST。（教学版不执行摘牌清算，只做退市风险提示。）</p>
+      <p>「大手模式」打开后，对局设置里会出现政策工具箱：可直接调财政支出强度与税率、把支出倾斜到基建／民生／产业补贴，选政策利率方向与流动性投放，还能一键套用「稳增长／减税惠民／产业扶持／降温紧缩／滞胀应对／危机救援」六套模板，也可自己制造供给冲击——冲击是外生事件，按下即生效、约两三个交易日逐步消化，同一时间只保留一种冲击（再点会刷新持续期）；政策本身不是一按就涨——先经历「内部时滞」（约一个交易日拍板落地），再经历「外部时滞」（约三个交易日逐步见效），传导进度条会告诉你走到哪一步。力度过猛会推高通胀与赤字、累积债务率，反过来抬利率、压估值。关闭大手模式后，这套设置整体隐藏且完全不参与定价。</p>
+    </div>
+
+    <div class="wsec wsec-risk">
+      <h3>风险提示 · 请先读这一段</h3>
+      <ul>
+        <li>本页面是<b>教学模拟器</b>：行情、宏观数据、K 线、新闻全部由程序随机生成，<b>与真实市场无关</b>，也不接任何真实行情或交易接口。</li>
+        <li>它是纯浏览器单机程序，<b>不涉及任何资金</b>，不适合当实盘练手工具，<b>不构成投资建议</b>。</li>
+        <li>模拟盘<b>没有融资与杠杆功能</b>：做多只用现金，做空为无保证金的反向下注，不会欠钱、不会爆仓。现实中的融资融券有维持担保比例、强平线与利息，规则与此完全不同，<b>切勿照此操作</b>。</li>
+        <li>存档只存在你自己的浏览器本地，不上传服务器；清除缓存、无痕模式或更换设备会丢失对局。</li>
+      </ul>
+    </div>
+
+    <button class="wstart" id="btnStart">开始交易</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ================= 配置 ================= */
+const CONFIG = {
+  startBalance: 10000,
+  totalTrades: 20,
+  tickMs: 1500,
+  volatility: 0.0027,  // 基准：按 10 拍/天的日波动标定
+  bondVol: 0.0026,
+  fee: 0.003,
+  maxPoints: 240,
+  chartRange: 60,
+  maxBars: 240,
+  newsMax: 40,
+  eventChance: 0.18,
+  corpEventChance: 0.07
+};
+
+/* ================= 板块（指数层，不可交易） ================= */
+const GROUPS = [
+  {id:'tech', fundName:'科技ETF', fundCode:'EF101', name:'科技', code:'TECH', beta:1.35, base:100, type:'index', inflSensitive:true,
+    events:[
+      {dir: 1, title:'AI 算力订单超预期，头部厂商业绩上修'},
+      {dir: 1, title:'半导体国产替代提速，产能利用率上行'},
+      {dir:-1, title:'监管收紧数据合规，板块估值承压'},
+      {dir:-1, title:'大额解禁减持，短期资金分流'},
+      {dir: 1, title:'新品周期开启，研发投入落地'},
+      {dir:-1, title:'季度业绩不及预期，毛利率下滑'}
+    ]},
+  {id:'cons', fundName:'消费ETF', fundCode:'EF102', name:'消费', code:'CONS', beta:0.80, base:100, type:'index', inflSensitive:false,
+    events:[
+      {dir: 1, title:'社零回暖，可选消费销量回升'},
+      {dir: 1, title:'龙头渠道库存去化完成，提价落地'},
+      {dir:-1, title:'居民消费意愿偏弱，零售增速不及预期'},
+      {dir:-1, title:'原材料涨价压缩终端利润'}
+    ]},
+  {id:'fin', fundName:'金融ETF', fundCode:'EF103', name:'金融', code:'FIN', beta:0.95, base:100, type:'index', inflSensitive:false,
+    events:[
+      {dir: 1, title:'信贷投放回暖，息差预期改善'},
+      {dir: 1, title:'市场成交放量，券商经纪业务受益'},
+      {dir:-1, title:'不良率抬头，资产质量担忧升温'}
+    ]},
+  {id:'ener', fundName:'能源ETF', fundCode:'EF104', name:'能源', code:'ENER', beta:1.10, base:100, type:'index', inflSensitive:true,
+    events:[
+      {dir: 1, title:'大宗商品上行，上游盈利改善'},
+      {dir: 1, title:'供需缺口扩大，价格韧性增强'},
+      {dir:-1, title:'需求走弱，能源价格回落'}
+    ]},
+  {id:'bond', fundName:'债券ETF', fundCode:'EB101', name:'债券', code:'BOND', beta:0.10, base:100, type:'bond', safe:true, events:[]}
+];
+const GROUP_MAP = Object.fromEntries(GROUPS.map(g=>[g.id,g]));
+
+/* ================= 个股（可交易标的） =================
+   edge  = 公司自身长期 α（正的更容易跑赢板块，负的常年落后）
+   earn  = 盈利中枢系数，1.0 表示与板块同步；公司级永久事件会改写它（价值陷阱的来源）
+   beta  = 对板块指数的弹性 */
+const STOCKS = [
+  {id:'tech_star', group:'tech', name:'星珩科技', code:'S8101', beta:1.20, base:100, edge: 0.0010, inflSensitive:true},
+  {id:'tech_light',group:'tech', name:'极曜半导体', code:'S8102', beta:1.35, base:100, edge: 0.0002, inflSensitive:true},
+  {id:'tech_cloud',group:'tech', name:'云枢软件', code:'S3310', beta:1.05, base:100, edge:-0.0008, inflSensitive:true},
+  {id:'tech_stone',group:'tech', name:'砺川智造', code:'S8103', beta:1.25, base:100, edge: 0.0004, inflSensitive:true},
+  {id:'tech_sky',  group:'tech', name:'天岑数据', code:'S3311', beta:1.10, base:100, edge:-0.0003, inflSensitive:true},
+
+  {id:'cons_yue',  group:'cons', name:'悦岑消费', code:'C8501', beta:0.85, base:100, edge: 0.0008, inflSensitive:false},
+  {id:'cons_lan',  group:'cons', name:'澜町食品', code:'C8502', beta:0.75, base:100, edge: 0.0001, inflSensitive:false},
+  {id:'cons_chao', group:'cons', name:'潮叙零售', code:'C8503', beta:0.95, base:100, edge:-0.0009, inflSensitive:false},
+  {id:'cons_qing', group:'cons', name:'青陇乳业', code:'C8504', beta:0.70, base:100, edge: 0.0005, inflSensitive:false},
+  {id:'cons_an',   group:'cons', name:'澜汀餐饮', code:'C8505', beta:1.05, base:100, edge:-0.0011, inflSensitive:false},
+
+  {id:'fin_heng',  group:'fin',  name:'恒屹银行', code:'F8101', beta:0.90, base:100, edge: 0.0006, inflSensitive:false},
+  {id:'fin_ding',  group:'fin',  name:'鼎沅证券', code:'F8102', beta:1.15, base:100, edge: 0.0003, inflSensitive:false},
+  {id:'fin_an',    group:'fin',  name:'安澈保险', code:'F8103', beta:0.95, base:100, edge:-0.0007, inflSensitive:false},
+  {id:'fin_tai',   group:'fin',  name:'泰临信托', code:'F8104', beta:1.00, base:100, edge: 0.0002, inflSensitive:false},
+  {id:'fin_feng',  group:'fin',  name:'丰陇农商', code:'F8105', beta:0.80, base:100, edge:-0.0006, inflSensitive:false},
+
+  {id:'ener_hua',  group:'ener', name:'华垠能源', code:'E8901', beta:1.05, base:100, edge: 0.0009, inflSensitive:true},
+  {id:'ener_hei',  group:'ener', name:'黑岳矿业', code:'E8902', beta:1.30, base:100, edge: 0.0002, inflSensitive:true},
+  {id:'ener_lan',  group:'ener', name:'蓝汀石化', code:'E8903', beta:1.10, base:100, edge:-0.0006, inflSensitive:true},
+  {id:'ener_han',  group:'ener', name:'瀚岭燃气', code:'E8904', beta:0.90, base:100, edge: 0.0007, inflSensitive:true},
+  {id:'ener_qiong',group:'ener', name:'穹隆煤业', code:'E8905', beta:1.25, base:100, edge:-0.0004, inflSensitive:true},
+
+  /* —— 风险警示股（ST）：基本面已经坏掉的公司 ——
+     earn 低 → 合理估值本身就低，所以"便宜"不是错杀，是价值陷阱；
+     涨跌幅限制 ±5%，消息驱动强、盘口薄，容易出现一字板与连续跌停 */
+  {id:'tech_rui',  group:'tech', name:'锐垣科技', code:'S8104', beta:1.40, base:100, edge:-0.0016, earn:0.60, st:true, inflSensitive:true},
+  {id:'cons_wei',  group:'cons', name:'味岐食品', code:'C8506', beta:1.00, base:100, edge:-0.0014, earn:0.62, st:true, inflSensitive:false},
+  {id:'fin_hui',   group:'fin',  name:'汇岭担保', code:'F8106', beta:1.10, base:100, edge:-0.0013, earn:0.58, st:true, inflSensitive:false},
+  {id:'ener_jin',  group:'ener', name:'晋朔煤化', code:'E8906', beta:1.30, base:100, edge:-0.0011, earn:0.66, st:true, inflSensitive:true}
+];
+const STOCK_MAP = Object.fromEntries(STOCKS.map(s=>[s.id,s]));
+function stocksOf(gid){ return STOCKS.filter(s=>s.group===gid); }
+
+/* 公司级事件：perm 为永久盈利中枢变动（±），0 表示只影响短期价格 */
+const CORP_NEWS = [
+  {dir: 1, alpha:0.005, perm:0,     t:'{n}新签订单超预期，机构上调盈利预测'},
+  {dir: 1, alpha:0.004, perm:0,     t:'{n}季度业绩超预期，资金加速流入'},
+  {dir: 1, alpha:0.0035, perm: 0.08, t:'{n}新产能投产，长期盈利中枢上移'},
+  {dir:-1, alpha:0.005, perm:0,     t:'{n}主力产品被立案调查，短期承压'},
+  {dir:-1, alpha:0.004, perm:0,     t:'{n}季度业绩不及预期，估值遭下修'},
+  {dir:-1, alpha:0.0035, perm:-0.10, t:'{n}核心业务需求永久萎缩，盈利中枢下修'},
+  {dir:-1, alpha:0.0025, perm:-0.06, t:'{n}行业格局恶化，竞争对手抢占份额'}
+];
+
+/* ================= 宏观事件模板（按阶段分组） ================= */
+const NEWS_BY_PHASE = {
+  recover: [
+    {type:'货币政策', target:'liquidity', dir: 1, strength:0.030, title:'央行降准0.5个百分点，中长期流动性释放'},
+    {type:'货币政策', target:'liquidity', dir: 1, strength:0.020, title:'MLF 利率下调，企业融资成本回落'},
+    {type:'财政政策', target:'policy',    dir: 1, strength:0.025, title:'出台基建与减税降费计划，托底经济'},
+    {type:'市场情绪', target:'sentiment', dir: 1, strength:0.020, title:'风险偏好回暖，资金逐步回流权益市场'}
+  ],
+  expand: [
+    {type:'行业景气', target:'sentiment', dir: 1, strength:0.022, title:'企业盈利超预期，风险偏好持续上行'},
+    {type:'财政政策', target:'policy',    dir: 1, strength:0.018, title:'财政支出保持积极，配套需求落地'},
+    {type:'市场情绪', target:'sentiment', dir: 1, strength:0.018, title:'增量资金入场，市场交投活跃'}
+  ],
+  overheat: [
+    {type:'货币政策', target:'liquidity', dir:-1, strength:0.030, title:'央行加息收紧流动性，抑制过热需求'},
+    {type:'财政政策', target:'policy',    dir:-1, strength:0.025, title:'财政收敛，基建支出节奏放缓'},
+    {type:'市场情绪', target:'sentiment', dir:-1, strength:0.020, title:'估值偏高，资金开始兑现浮盈'}
+  ],
+  stagflation: [
+    {type:'市场情绪', target:'sentiment', dir:-1, strength:0.025, title:'增长放缓叠加高通胀，市场情绪低迷'},
+    {type:'货币政策', target:'liquidity', dir:-1, strength:0.015, title:'通胀粘性较强，货币政策难以宽松'},
+    {type:'行业景气', target:'sentiment', dir:-1, strength:0.018, title:'成本高企，企业利润两头受挤'}
+  ],
+  recession: [
+    {type:'市场情绪', target:'sentiment', dir:-1, strength:0.025, title:'避险情绪升温，资金撤离风险资产'},
+    {type:'货币政策', target:'liquidity', dir: 1, strength:0.020, title:'政策层酝酿宽松，市场期待流动性托底'},
+    {type:'财政政策', target:'policy',    dir: 1, strength:0.018, title:'稳增长政策储备待发，市场观望'}
+  ],
+  trough: [
+    {type:'货币政策', target:'liquidity', dir: 1, strength:0.030, title:'全面降准降息，流动性宽松托底经济'},
+    {type:'财政政策', target:'policy',    dir: 1, strength:0.025, title:'加码专项债与民生支出，稳定总需求'},
+    {type:'市场情绪', target:'sentiment', dir: 1, strength:0.018, title:'估值处于低位，长线资金试探性布局'}
+  ]
+};
+const BLACK_SWAN = [
+  {type:'黑天鹅', target:'sentiment', dir:-1, strength:0.045, title:'突发地缘冲突，全球风险资产剧烈震荡'},
+  {type:'黑天鹅', target:'sentiment', dir:-1, strength:0.040, title:'外部金融市场剧烈波动，恐慌情绪传导'},
+  {type:'黑天鹅', target:'liquidity', dir:-1, strength:0.050, title:'某大型机构突然违约，银行间流动性瞬间收紧'},
+  {type:'黑天鹅', target:'sentiment', dir:-1, strength:0.055, title:'海外交易所盘中熔断，风险资产遭无差别抛售'},
+  {type:'黑天鹅', target:'policy',    dir: 1, strength:0.045, title:'监管层深夜召开发布会，超预期稳市场措施落地'},
+  {type:'黑天鹅', target:'liquidity', dir: 1, strength:0.040, title:'央行紧急开展大规模流动性投放，市场情绪修复'},
+  {type:'黑天鹅', target:'growth',    dir:-1, strength:0.035, title:'关键出口市场突然加征关税，外需预期跳水'},
+  {type:'黑天鹅', target:'inflation', dir: 1, strength:0.040, title:'国际能源通道受阻，输入型通胀压力陡增'}
+];
+/* 跨阶段通用事件：不绑定宏观周期，随时可能发生，制造"行情之外的意外" */
+const CROSS_NEWS = [
+  {type:'产业政策', target:'policy', dir: 1, strength:0.020, title:'新一轮产业扶持目录发布，相关链条订单预期上修'},
+  {type:'外部需求', target:'growth', dir:-1, strength:0.018, title:'海外主要客户下调采购指引，出口链条承压'},
+  {type:'外部需求', target:'growth', dir: 1, strength:0.018, title:'海外补库周期启动，出口订单明显回暖'},
+  {type:'监管', target:'sentiment', dir:-1, strength:0.022, title:'跨部门联合检查启动，部分行业合规成本上升'},
+  {type:'资金面', target:'liquidity', dir:-1, strength:0.018, title:'季末资金面紧张，机构被动降杠杆'},
+  {type:'资金面', target:'liquidity', dir: 1, strength:0.018, title:'长期资金入市方案落地，增量配置需求释放'},
+  {type:'舆情', target:'sentiment', dir:-1, strength:0.016, title:'社交平台出现行业负面热搜，散户情绪转弱'},
+  {type:'舆情', target:'sentiment', dir: 1, strength:0.016, title:'行业正面话题出圈，短期关注度快速升温'}
+];
+/* 个股传闻 / 噪声：只影响一两只股票，真假不明、衰减很快，专门用来制造"假信号" */
+const NOISE_STOCK = [
+  {dir: 1, alpha:0.0032, t:'盘中传出{n}获大额订单的消息，公司尚未回应'},
+  {dir:-1, alpha:0.0032, t:'网传{n}核心高管变动，消息真实性待核实'},
+  {dir: 1, alpha:0.003, t:'{n}被自媒体列入"潜在被并购标的"，资金短线炒作'},
+  {dir:-1, alpha:0.003, t:'{n}遭匿名做空报告质疑，公司称内容失实'},
+  {dir: 1, alpha:0.004, t:'{n}盘口出现连续大单扫货，疑有机构建仓'},
+  {dir:-1, alpha:0.004, t:'{n}尾盘放量跳水，市场传言部分资金被迫平仓'},
+  {dir: 1, alpha:0.003, t:'{n}新品路演反馈好于预期，卖方临时上调目标价'},
+  {dir:-1, alpha:0.003, t:'{n}供应商传出减产，市场担忧其成本上行'},
+  {dir:-1, alpha:0.0032, t:'{n}相关传闻被辟谣，短线资金快速撤离'},
+  {dir: 1, alpha:0.0032, t:'{n}被纳入某指数成分股讨论名单，被动资金预期升温'}
+];
+/* ============ ST 股专属资讯：退市风险 / 保壳 / 重组 / 摘帽 ============
+   risk 为风险值增量（+ 加剧退市风险、- 缓解），perm 为永久盈利中枢变动 */
+const ST_NEWS = [
+  {dir:-1, alpha:0.0060, perm:-0.09, risk:+12, t:'{n}年报被出具非标审计意见，退市风险显著上升'},
+  {dir:-1, alpha:0.0050, risk:+10,          t:'{n}主要银行账户被冻结，债务纠纷持续发酵'},
+  {dir:-1, alpha:0.0055, perm:-0.06, risk:+14, t:'{n}控股股东所持股份被司法拍卖，控制权存疑'},
+  {dir:-1, alpha:0.0060, risk:+16,          t:'{n}收到监管立案告知书，涉嫌信息披露违规'},
+  {dir:-1, alpha:0.0045, risk:+8,           t:'{n}主营子公司停产整顿，复产时间未定'},
+  {dir:-1, alpha:0.0050, perm:-0.08, risk:+15, t:'{n}年度预亏公告，净资产可能转负'},
+  {dir:-1, alpha:0.0040, risk:+9,           t:'{n}重大诉讼一审败诉，需计提预计负债'},
+  {dir:-1, alpha:0.0045, risk:+6,           t:'{n}被交易所问询，要求说明持续经营能力'},
+  {dir: 1, alpha:0.0065, perm:+0.12, risk:-18, t:'{n}债务重组方案获债权人会议通过，重整推进'},
+  {dir: 1, alpha:0.0050, risk:-10,          t:'{n}获地方政府纾困补助，短期流动性缓解'},
+  {dir: 1, alpha:0.0055, perm:+0.09, risk:-14, t:'{n}拟剥离亏损资产回笼资金，保壳意图明确'},
+  {dir: 1, alpha:0.0070, perm:+0.15, risk:-22, t:'{n}年报扭亏为盈，已提交撤销风险警示申请'},
+  {dir: 1, alpha:0.0060, risk:-12,          t:'{n}引入战略投资者，实际控制人拟变更'},
+  {dir: 1, alpha:0.0045, risk:-8,           t:'{n}主营产品提价落地，毛利率环比改善'},
+  {dir: 1, alpha:0.0050, risk:-6,           t:'{n}大股东承诺注入优质资产，重组预期升温'},
+  {dir:-1, alpha:0.0055, risk:+10,          t:'{n}连续多日跌停，融资盘强平压力显现'}
+];
+/* ST 股的传闻：真假更难辨，且多数围绕重组与摘帽 */
+const ST_RUMOR = [
+  '网传{n}将被借壳重组，拟注入资产尚未披露',
+  '市场传闻{n}年报将扭亏，摘帽预期升温',
+  '知情人士称{n}正与债权人协商展期，进展不明',
+  '传闻{n}实控人正接触产业资本，拟转让控股权',
+  '网传{n}即将被实施退市风险警示，公司未回应',
+  '渠道消息称{n}主营订单回暖，产能利用率回升',
+  '传言{n}保壳方案被否决，公司将另寻出路',
+  '论坛帖称{n}年报审计机构可能出具非标意见',
+  '传{n}将获地方国资注资，金额与方式均未证实'
+];
+const RUMOR_SOURCES = [
+  {name:'权威财经媒体', cred:0.68},
+  {name:'行业垂直媒体', cred:0.52},
+  {name:'券商晨会纪要', cred:0.46},
+  {name:'自媒体大V',     cred:0.30},
+  {name:'匿名论坛帖',    cred:0.18}
+];
+/* 板块层面的噪音：没有基本面依据的资金轮动 */
+const NOISE_GROUP = [
+  {dir: 1, alpha:0.0032, t:'{g}板块出现无明显消息的资金轮动，短线资金涌入'},
+  {dir:-1, alpha:0.0032, t:'{g}板块高位放量滞涨，获利盘开始松动'},
+  {dir: 1, alpha:0.003, t:'{g}板块龙头尾盘拉升，带动情绪回暖'},
+  {dir:-1, alpha:0.003, t:'{g}板块被曝出部分公司财报口径存疑，情绪转弱'}
+];
+const PHASE_NAME = {recover:'复苏', expand:'扩张', overheat:'过热', stagflation:'滞胀', recession:'衰退', trough:'见底'};
+
+/* ================= 状态 ================= */
+function initEntity(meta, kind){
+  // 起步价在基准附近随机偏离，避免每局都从同一价位起步、回归方向一致
+  const spread = meta.type==='bond' ? 0.02 : 0.08;
+  const price = +(meta.base*(1+(Math.random()-0.5)*2*spread)).toFixed(2);
+  const o = {id:meta.id, name:meta.name, code:meta.code, kind:kind,
+    fundName:meta.fundName||'', fundCode:meta.fundCode||'',
+    group:meta.group||meta.id, beta:meta.beta, base:meta.base,
+    type:meta.type||'stock', inflSensitive:!!meta.inflSensitive,
+    price, open:price, high:price, low:price, history:[price],
+    fairHist:[], volHist:[],
+    volume:0, turnover:0, bull:0, bear:0, newsAlpha:0, momentum:0,
+    idioPhase:(meta.type==='bond'?0:Math.random()*Math.PI*2),
+    idioPeriod:(meta.type==='bond'?0:(52+Math.random()*80)),
+    trend:0, volLevel:1, lastShock:0, lastRet:0, depth: meta.st ? 0.72 : 1.1,
+    mom:0, runSign:0, runLen:0, runAmp:0,
+    earn: meta.earn||1,        // 盈利中枢系数（个股专用；永久事件改写它）
+    edge:meta.edge||0,         // 公司长期 α
+    /* —— 风险警示状态（ST）——
+       stFlag: null=正常 / 'ST'=其他风险警示 / '*ST'=退市风险警示
+       stRisk: 0~100，负面事件累积、正面事件削减，财报季结算 */
+    stFlag: meta.st ? 'ST' : null,
+    stRisk: meta.st ? 42 + Math.floor(Math.random()*14) : 0,
+    stQuarter: 0, limitHit: 0,
+    bars:[], fairBars:[], barTick:0,
+    curBar:{o:price, h:price, l:price, c:price, v:0}};
+  return o;
+}
+function initIndex(g){ return initEntity(g,'index'); }
+function initStock(st){
+  const o = initEntity(st,'stock');
+  o.stFlag = st.st ? 'ST' : null;      // 老存档里没有该字段时也能落回定义
+  if(st.st && !o.stRisk) o.stRisk = 62;
+  return o;
+}
+/* 显示名：风险警示股在名称前带标记，摘帽后自动去掉 */
+function dispName(sec){
+  if(!sec) return '';
+  return (sec.stFlag ? sec.stFlag + ' ' : '') + sec.name;
+}
+
+const state = {
+  cash: CONFIG.startBalance,
+  sectors:{},          // 可交易标的：12 只个股 + 债券指数
+  idx:{},              // 板块指数层：tech / cons / fin / ener（不可交易，只做参照）
+  current:'tech_star',
+  lastOf:{},           // 每个板块最后选中的个股，切回板块时用
+  macro:initMacro(),
+  rates:{ long:2.5, short:1.8, spread:0.7, bondIndex:100, mode:'balance' },
+  expect:{ mainExpect:'', bias:0, overExpect:0 },
+  pos:{},
+  ratio:0.3,
+  trades:0, streak:0, best:CONFIG.startBalance,
+  finished:false, timer:null,
+  paused:false, speed:1,
+  activeEvents:[], newsFeed:[], chartRange:CONFIG.chartRange,
+  log:[], tickNo:0, preSim:false, preDaysTarget:0, orders:[], rumors:[], depth:1.1,
+  /* 大手模式（政策工具箱）：on=false 时完全不参与定价 */
+  policy:{on:false, spend:1.0, tax:1.0, tilt:'neutral', rateMode:'hold', liqMode:'neutral',
+          supplyShock:0, shockType:null, shockPeak:0, shockDur:0, shockLeft:0, preset:null, lagIn:0, lagOut:30, apply:0, deficit:2.0, debt:35},
+  ui:{ rounds:CONFIG.totalTrades, showPower:true, newsDensity:'slim', fair:true, ma:true, band:false, vol:false, cost:true,
+       barsPerDay:10, period:'day', preDays:40, eventLevel:2 }
+};
+function seedMarket(){
+  GROUPS.forEach(g=>{
+    if(g.type==='bond'){ state.sectors[g.id] = initEntity(g,'bond'); state.idx[g.id]=state.sectors[g.id]; return; }
+    state.idx[g.id] = initIndex(g);
+    state.sectors[g.id] = state.idx[g.id];   // 指数基金：与指数同一实体，可直接交易
+  });
+  STOCKS.forEach(st=>{
+    const o = initStock(st);
+    const gFair = fairValue(state.idx[st.group]);
+    o.price = +(gFair*o.earn*(1+(Math.random()-0.5)*0.14)).toFixed(2);
+    o.open=o.high=o.low=o.price; o.curBar={o:o.price,h:o.price,l:o.price,c:o.price,v:0};
+    o.history=[o.price];
+    state.sectors[st.id]=o;
+    state.lastOf[st.group] = state.lastOf[st.group] || st.id;   // 默认记住该板块第一只
+  });
+  Object.keys(state.sectors).forEach(id=>{
+    const o=state.sectors[id];
+    o.fairHist=[fairValue(o)]; o.volHist=[0]; o.fairBars=[fairValue(o)];
+  });
+}
+seedMarket();
+const UI_DEFAULT = Object.assign({}, state.ui);
+
+const $ = id => document.getElementById(id);
+const el = {
+  totalAsset:$('totalAsset'), cash:$('cash'), posVal:$('posVal'), rate:$('rate'),
+  gGrowth:$('gGrowth'), gInflation:$('gInflation'), gLiquidity:$('gLiquidity'), gPolicy:$('gPolicy'),
+  barGrowth:$('barGrowth'), barInflation:$('barInflation'), barLiquidity:$('barLiquidity'), barPolicy:$('barPolicy'),
+  rateLong:$('rateLong'), rateShort:$('rateShort'), spread:$('spread'), bondIdx:$('bondIdx'), modeText:$('modeText'), bondFlow:$('bondFlow'),
+  expMain:$('expMain'), gapText:$('gapText'), overExp:$('overExp'),
+  sectors:$('sectors'), stockChips:$('stockChips'), coinName:$('coinName'), price:$('price'), changeTag:$('changeTag'),
+  open:$('open'), high:$('high'), low:$('low'), volume:$('volume'), turnover:$('turnover'),
+  news:$('news'), newsFadeTop:$('newsFadeTop'), newsFadeBot:$('newsFadeBot'), bids:$('bids'), asks:$('asks'), midPrice:$('midPrice'),
+  powerBox:$('powerBox'), powerBull:$('powerBull'), powerBear:$('powerBear'), bullVal:$('bullVal'), bearVal:$('bearVal'),
+  indChips:$('indChips'), evChips:$('evChips'), roundChips:$('roundChips'), roundChip:$('roundChip'), togglePower:$('togglePower'),
+  dayChip:$('dayChip'), btnPause:$('btnPause'), barChips:$('barChips'), periodChips:$('periodChips'),
+  playSpeeds:document.querySelectorAll('.play-bar button[data-speed]'),
+  welcome:$('welcome'), btnStart:$('btnStart'), btnHelp:$('btnHelp'),
+  btnShare:$('btnShare'), btnExport:$('btnExport'), btnClearSave:$('btnClearSave'),
+  btnShareResult:$('btnShareResult'),
+  tradeDock:$('tradeDock'), dockName:$('dockName'), dockPrice:$('dockPrice'), dockChg:$('dockChg'),
+  btnLimit:$('btnLimit'), dockSub:$('dockSub'),
+  ordList:$('ordList'), ordSheet:$('ordSheet'), ordMask:$('ordMask'), ordPrice:$('ordPrice'), ordSide:$('ordSide'),
+  ordSecName:$('ordSecName'), ordCur:$('ordCur'), ordHint:$('ordHint'), ordCancel:$('ordCancel'),
+  ordSubmit:$('ordSubmit'), ordCount:$('ordCount'), ordQ1:$('ordQ1'), ordQ2:$('ordQ2'), ordQ3:$('ordQ3'),
+  preSimBox:$('preSimBox'), preSimTxt:$('preSimTxt'), preSimFill:$('preSimFill'), preChips:$('preChips'),
+  posList:$('posList'), volRate:$('volRate'), dockRatio:$('dockRatio'), ordRatio:$('ordRatio'), ordAmt:$('ordAmt'),
+  btnBuy:$('btnBuy'), btnSell:$('btnSell'), btnClose:$('btnClose'),
+  btnAdd:$('btnAdd'), btnReduce:$('btnReduce'), btnCloseAll:$('btnCloseAll'), btnReset:$('btnReset'),
+  overlay:$('overlay'), modalTitle:$('modalTitle'), modalRank:$('modalRank'),
+  modalFinal:$('modalFinal'), modalComment:$('modalComment'), btnAgain:$('btnAgain'),
+  depthTag:$('depthTag'), toast:$('toast'), chart:$('chart'), chartRange:$('chartRange'), chartStat:$('chartStat'),
+  togglePolicy:$('togglePolicy'), policyBox:$('policyBox'), polSpend:$('polSpend'), polTax:$('polTax'),
+  polTilt:$('polTilt'), polRate:$('polRate'), polLiq:$('polLiq'), polShock:$('polShock'),
+  polFill:$('polFill'), polLag:$('polLag'), polBook:$('polBook'), polPresetNote:$('polPresetNote')
+};
+
+/* ================= 工具 ================= */
+const fmt = n => n.toLocaleString('zh-CN',{maximumFractionDigits:2, minimumFractionDigits:2});
+const labelOf = sec => (!sec) ? '' : (sec.kind==='index' ? (sec.fundName||sec.name) : dispName(sec));
+const fmtInt = n => Math.round(n).toLocaleString('zh-CN');
+function clamp(v,a,b){ return Math.max(a,Math.min(b,v)); }
+const cur = () => state.sectors[state.current];
+function toast(msg){ el.toast.textContent=msg; el.toast.classList.add('show'); clearTimeout(el.toast._t); el.toast._t=setTimeout(()=>el.toast.classList.remove('show'),1600); }
+function nowTime(){ return new Date().toLocaleTimeString('zh-CN',{hour12:false}); }
+
+/* ================= 宏观周期 ================= */
+function phaseOf(a){
+  if(a < Math.PI/2) return 'recover';
+  if(a < Math.PI) return 'expand';
+  if(a < Math.PI*1.3) return 'overheat';
+  if(a < Math.PI*1.6) return 'stagflation';
+  if(a < Math.PI*1.9) return 'recession';
+  return 'trough';
+}
+function initMacro(){
+  const angle = Math.random()*Math.PI*2;
+  const a = angle%(Math.PI*2);
+  const growth = clamp(Math.sin(a)*0.7+(Math.random()-0.5)*0.15,-1,1);
+  const inflation = clamp(Math.sin(a-Math.PI/3)*0.6+(Math.random()-0.5)*0.12,-1,1);
+  return { phase:phaseOf(a), growth, inflation,
+    liquidity:(Math.random()-0.5)*0.6, policy:(Math.random()-0.5)*0.6,
+    sentiment:clamp(0.5*growth+0.5*(Math.random()-0.5)*0.6,-1,1),
+    cycleAngle:angle, cycleAngle2:Math.random()*Math.PI*2,
+    cycle2Phase:Math.random()*Math.PI*2, regime:0 };
+}
+function updateMacro(){
+  const m = state.macro;
+  // 两条不同周期的经济波叠加：长周期约 37 个交易日，短周期约 14 个交易日
+  // 叠加后不再是一个规整的正弦，峰谷高低不一、间隔不等，避免整局"一波接一波"的节拍感
+  m.cycleAngle  += 0.017;
+  m.cycleAngle2 += 0.046;
+  const a = m.cycleAngle  % (Math.PI*2);
+  const b = m.cycleAngle2 % (Math.PI*2);
+  const wave = Math.sin(a)*0.52 + Math.sin(b + m.cycle2Phase)*0.26;
+  // 偶发的景气状态切换（软着陆 / 小衰退），让历史里出现不同"性格"的段落
+  if(Math.random() < 0.0035) m.regime = (Math.random()-0.5)*0.35;
+  m.regime *= 0.985;
+  m.growth    = clamp(wave + m.regime + (Math.random()-0.5)*0.15, -1, 1);
+  m.inflation = clamp(Math.sin(a - Math.PI/3)*0.45 + Math.sin(b + m.cycle2Phase + 1.1)*0.22
+                      + (Math.random()-0.5)*0.12, -1, 1);
+  m.phase = phaseOf(a);
+
+  // 逆周期政策，带惯性缓慢靠拢目标
+  // 流动性目标：通胀高 → 收紧；增长转弱 → 放松（负号要落在“负增长”上，
+  // 原来的 -0.4*max(0,-growth) 在衰退时反而继续收紧，是顺周期的，会让情绪长期偏低）
+  let targetL = clamp(-0.6*m.inflation + 0.55*Math.min(0, m.growth), -1, 1);
+  /* 大手模式：央行投放/收紧直接移动流动性目标，再由惯性逐步靠拢（关闭时不动目标） */
+  if(state.policy && state.policy.on){
+    const P = state.policy, adj = (P.liqMode==='ease' ? 0.55 : P.liqMode==='tight' ? -0.55 : 0)*(P.apply||0);
+    targetL = clamp(targetL + adj, -1, 1);
+  }
+  const targetP = clamp(m.growth<0 ? 0.5 : (m.inflation>0.4 ? -0.4 : 0.1), -1, 1);
+  m.liquidity += (targetL - m.liquidity)*0.15;
+  m.policy    += (targetP - m.policy)*0.15;
+  m.sentiment  = clamp(0.5*m.growth + 0.5*m.liquidity + (Math.random()-0.5)*0.15, -1, 1);
+}
+
+/* ================= 利率与债券 ================= */
+function updateRates(){
+  const m = state.macro, r = state.rates;
+  r.long  = 2.5 + m.growth*0.3 + m.inflation*0.5;  // 10Y：经济+通胀定价
+  r.short = 1.2 + (1 - m.liquidity)*0.8;          // 短端：货币政策定价
+  /* 大手模式：政策利率方向 + 债务压力抬升长端（关闭时整段跳过） */
+  if(state.policy && state.policy.on){
+    const P = state.policy, k = P.apply||0;
+    const adj = (P.rateMode==='cut' ? -0.5 : P.rateMode==='hike' ? 0.6 : 0)*k;
+    r.short += adj;
+    r.long  += adj*0.55 + (P.debt>60 ? (P.debt-60)*0.02 : 0)*k;
+  }
+  // 利差允许为负（倒挂），原来用 Math.max(0, …) 会把倒挂抹成 0.00%，看起来像坏了
+  r.spread = r.long - r.short;
+  r.bondIndex = 100 - (r.long - 2.5)*10;          // 利率上行，债指下跌
+
+  // 注意量纲：sentiment ∈ [-1, 1]（0 = 中性），阈值也必须落在同一区间，
+  // 否则会出现“债强股弱”长期霸屏（原 0.35/0.65 是按 0~1 写的，等于恒真）。
+  if(m.growth>0.6 && m.inflation<0.5) r.mode = 'doubleBoom';
+  else if(m.growth<0.3 && m.inflation>0.50) r.mode = 'doubleKill';  // 通胀>0.65 只占 0.5%，这条分支几乎永远走不到
+  // 情绪分布本身左偏（衰退时跌得更狠、繁荣时涨幅受通胀压制），
+  // 所以两条阈值不对称：-0.25 / +0.15 让"债强股弱"和"股强债弱"出现频率接近。
+  else if(m.sentiment < -0.25) r.mode = 'bondFlow';
+  else if(m.sentiment >  0.15) r.mode = 'equityFlow';
+  else r.mode = 'balance';
+}
+
+/* ================= 市场预期与预期差 ================= */
+function updateExpect(){
+  const m = state.macro, e = state.expect;
+  const phaseText = {recover:'复苏回暖',expand:'景气扩张',overheat:'经济过热',stagflation:'滞胀承压',recession:'经济走弱',trough:'底部修复'};
+  e.mainExpect = `经济${phaseText[m.phase]}，流动性${m.liquidity>0.5?'偏宽松':'偏紧'}延续`;
+  const realPower = (m.growth*0.6 + m.inflation*0.4 + 1)/2; // 归一化到 0~1
+  e.bias = clamp(realPower - 0.5, -1, 1);
+  // 透支度 = 基本面强度偏离中性的幅度，按 0~1 区间映射到百分比（0~100%）
+  e.overExpect = Math.round(Math.min(100, Math.abs(e.bias)*200));
+}
+
+/* ================= 资讯与事件 ================= */
+/* 资讯密度：控制"能读得过来"的节奏，不改变事件对价格的影响 */
+const NEWS_DENSITY = {
+  slim:   {name:'精简', rate:0.22, cap:1,  noise:false},
+  normal: {name:'标准', rate:0.55, cap:2,  noise:true},
+  full:   {name:'详细', rate:99,   cap:99, noise:true},
+};
+let newsBudget = 1;                       // 令牌桶：每拍按 rate 补充，推送消耗
+function pushNews(tag, ev, scope, extra){
+  const d = NEWS_DENSITY[(state.ui && state.ui.newsDensity) || 'slim'] || NEWS_DENSITY.slim;
+  if(d.noise === false && (tag||'').indexOf('噪声') === 0) return false;   // 纯资金面噪音不占屏，价格影响照旧
+  /* 政策与黑天鹅必须让玩家看到，不占预算；证实/辟谣是判断反馈，半价 */
+  /* 只有「政策工具箱」自己的消息、黑天鹅、证实/辟谣可以绕过预算；
+     「财政政策/货币政策」这类属于普通宏观资讯，照常排队 */
+  const free = (tag === '政策') || (tag === '黑天鹅') || (tag === '退市风险')
+            || (tag||'').indexOf('证实')===0 || (tag||'').indexOf('辟谣')===0;
+  if(!free){
+    /* 传闻多付 0.5：为几拍后的「证实/辟谣」预留额度，保证成对出现、不烂尾 */
+    const cost = 1;
+    if(newsBudget < cost) return false;
+    newsBudget -= cost;
+  }
+  const cls = ev.dir>0 ? 'buy' : ev.dir<0 ? 'sell' : 'neutral';
+  state.newsFeed.unshift({time:nowTime(), tag, cls, title:ev.title, scope, extra:extra||''});
+  if(state.newsFeed.length > CONFIG.newsMax) state.newsFeed.pop();
+  return true;
+}
+function applyEvent(ev){
+  const m = state.macro;
+  m[ev.target] = clamp(m[ev.target] + ev.dir*ev.strength, -1, 1);
+}
+function eventMult(){
+  return state.ui.eventLevel===1 ? 0.5 : state.ui.eventLevel===3 ? 1.9 : 1;
+}
+function triggerEvent(){
+  const m = state.macro, k = eventMult();
+  /* ① 黑天鹅：低频、冲击大，改的是宏观状态 */
+  if(Math.random() < 0.03*k){
+    const ev = BLACK_SWAN[Math.floor(Math.random()*BLACK_SWAN.length)];
+    applyEvent(ev); pushNews('黑天鹅', ev, 'market');
+  }
+  /* ② 周期内宏观事件：按当前所处阶段取模板 */
+  if(Math.random() < CONFIG.eventChance*k){
+    const pool = NEWS_BY_PHASE[m.phase];
+    const ev = pool[Math.floor(Math.random()*pool.length)];
+    applyEvent(ev); pushNews(ev.type, ev, 'market');
+  }
+  /* ③ 跨阶段意外：不挑周期，随时可能打断主线 */
+  if(Math.random() < 0.05*k){
+    const ev = CROSS_NEWS[Math.floor(Math.random()*CROSS_NEWS.length)];
+    applyEvent(ev); pushNews(ev.type, ev, 'market');
+  }
+  /* ④ 行业级事件：打在板块指数上，经 β 传给板块内所有个股 */
+  GROUPS.forEach(g=>{
+    if(g.type==='bond' || !g.events.length) return;
+    if(Math.random() < 0.015*k){
+      const ev = g.events[Math.floor(Math.random()*g.events.length)];
+      state.idx[g.id].newsAlpha += ev.dir*0.005;
+      pushNews('板块·'+g.name, ev, g.id);
+    }
+    /* 板块噪音：无消息的资金轮动，只影响指数几个拍子 */
+    if(Math.random() < 0.01*k){
+      const ev = NOISE_GROUP[Math.floor(Math.random()*NOISE_GROUP.length)];
+      const cred = clamp(0.45 + (Math.random()-0.5)*0.2, 0.15, 0.75);
+      const truth = Math.random() < cred;
+      const ttl = 6 + Math.floor(Math.random()*8);
+      state.idx[g.id].newsAlpha += ev.dir*ev.alpha;   // 价格影响照旧
+      /* 只有真正推送出去的传闻才登记队列，否则几拍后会凭空冒出「证实/辟谣」 */
+      if(pushNews('噪声·'+g.name, {title:ev.t.replace('{g}', g.name), dir:ev.dir}, g.id,
+        '资金面观察 · 可信度 '+Math.round(cred*100)+'% · '+ttl+'拍后揭晓')){
+        state.rumors.push({kind:'idx', id:g.id, name:g.name+'板块', dir:ev.dir, alpha:ev.alpha,
+          born:state.tickNo, ttl, truth, src:'资金面观察', cred});
+      }
+    }
+  });
+  /* ⑤ 公司级事件：只打在这一只个股上；perm 稀有，但一旦发生就是永久重估
+     ST 股走专属事件池：消息更密（更常被消息推着走），负面消息还会累积退市风险 */
+  STOCKS.forEach(st=>{
+    const sec0 = state.sectors[st.id];
+    if(!sec0) return;
+    const isST = !!sec0.stFlag;
+    if(Math.random() < (isST ? 0.012 : 0.008)*k){
+      const pool = isST ? ST_NEWS : CORP_NEWS;
+      const ev = pool[Math.floor(Math.random()*pool.length)];
+      const sec = state.sectors[st.id];
+      if(!sec) return;
+      const nm = dispName(sec);
+      sec.newsAlpha += ev.dir*ev.alpha*(isST ? 1.45 : 1);   // ST 更吃消息，才有连板
+      if(ev.perm && Math.random() < (isST ? (ev.dir>0 ? 0.45 : 0.28) : 0.18)){
+        sec.earn = clamp(sec.earn*(1+ev.perm), 0.30, 1.9);
+      }
+      /* risk 已自带方向：负面消息为正（加剧风险）、正面消息为负（缓解风险），直接累加 */
+      if(ev.risk) sec.stRisk = clamp((sec.stRisk||0) + ev.risk, 0, 100);
+      pushNews((isST?'ST·':'个股·')+nm, {title:ev.t.replace('{n}', nm), dir:ev.dir}, st.id);
+    }
+    /* ⑥ 个股传闻：来源、可信度、揭晓时间都摆给你，真假要自己判断 */
+    if(Math.random() < (sec0.stFlag ? 0.010 : 0.006)*k){
+      const sec = state.sectors[st.id];
+      if(!sec) return;
+      const isST = !!sec.stFlag;
+      const ev = isST
+        ? {dir: Math.random()<0.45 ? -1 : 1,
+           alpha: 0.0045 + Math.random()*0.0025,
+           t: ST_RUMOR[Math.floor(Math.random()*ST_RUMOR.length)]}
+        : NOISE_STOCK[Math.floor(Math.random()*NOISE_STOCK.length)];
+      const src = RUMOR_SOURCES[Math.floor(Math.random()*RUMOR_SOURCES.length)];
+      /* 顺应当前板块资金流的传闻更容易成真，逆着走的更可能是噪音 */
+      const idx = state.idx[st.group];
+      const aligned = idx && ((idx.lastRet||0) >= 0) === (ev.dir>0);
+      /* ST 股的重组传闻尤其难验证，可信度整体再压一档 */
+      const cred = clamp(src.cred + (aligned ? 0.10 : -0.06) - (isST ? 0.08 : 0), 0.06, 0.85);
+      const truth = Math.random() < cred;
+      const ttl = 8 + Math.floor(Math.random()*8);
+      sec.newsAlpha += ev.dir*ev.alpha*(isST ? 1.4 : 1);    // 价格影响照旧（ST 更夸张）
+      const nm = dispName(sec);
+      if(pushNews((isST?'ST传闻·':'传闻·')+nm, {title:ev.t.replace('{n}', nm), dir:ev.dir}, st.id,
+        src.name+' · 可信度 '+Math.round(cred*100)+'% · '+ttl+'拍后揭晓')){
+        state.rumors.push({kind:'stock', id:st.id, name:nm, dir:ev.dir, alpha:ev.alpha,
+          born:state.tickNo, ttl, truth, src:src.name, cred});
+      }
+    }
+  });
+}
+
+/* ============ 风险警示状态机：戴帽 / 升级 *ST / 摘帽 ============
+   每 QUARTER 拍结算一次（约 12 个交易日，当作一个财报季）。规则：
+   · 普通股盈利中枢跌破 0.72 → 被实施其他风险警示（戴帽 ST）
+   · ST 股退市风险累积到 82 → 升级 *ST（退市风险警示）
+   · ST 股盈利中枢回到 0.90 且风险降到 30 以下 → 撤销风险警示（摘帽）
+   摘帽是 ST 股最大的重估机会：涨跌幅从 ±5% 放开到 ±10%，估值向新的中枢收敛 */
+const ST_QUARTER = 240;
+function stStatusStep(){
+  Object.keys(state.sectors).forEach(id=>{
+    const sec = state.sectors[id];
+    if(!sec || sec.kind!=='stock') return;
+    sec.stQuarter = (sec.stQuarter||0) + 1;
+    if(sec.stQuarter < ST_QUARTER) return;
+    sec.stQuarter = 0;
+    const nm = dispName(sec);
+    if(!sec.stFlag){
+      /* 普通公司：长期亏损 → 戴帽 */
+      if(sec.earn < 0.72){
+        sec.stFlag = 'ST';
+        sec.stRisk = clamp((sec.stRisk||0)+58, 0, 100);
+        sec.newsAlpha -= 0.012;
+        pushNews('政策', {title:nm+' 因持续亏损被实施其他风险警示（ST），涨跌幅限制收紧至 ±5%', dir:-1}, sec.id,
+          '交易所公告 · 摘帽需连续盈利并申请撤销');
+      }
+    }else if(sec.stFlag==='ST'){
+      if(sec.stRisk >= 82){
+        sec.stFlag = '*ST';
+        sec.newsAlpha -= 0.010;
+        pushNews('政策', {title:nm+' 被实施退市风险警示（*ST）：若下一年度仍不达标，将面临终止上市', dir:-1}, sec.id,
+          '交易所公告 · 退市风险警示');
+      }else if(sec.earn >= 0.90 && sec.stRisk <= 30){
+        sec.stFlag = null;
+        sec.stRisk = 0;
+        sec.newsAlpha += 0.016;
+        pushNews('政策', {title:nm+' 撤销风险警示（摘帽），涨跌幅限制恢复至 ±10%', dir:1}, sec.id,
+          '交易所公告 · 摘帽行情');
+      }
+    }else{
+      /* *ST：风险打满则给出终止上市风险提示（教学版不执行摘牌，只做压力提示） */
+      if(sec.stRisk >= 99){
+        sec.newsAlpha -= 0.014;
+        sec.stRisk = 88;
+        pushNews('退市风险', {title:nm+' 连续亏损且净资产为负，收到终止上市风险提示', dir:-1}, sec.id,
+          '交易所公告 · 请自行评估持仓风险');
+      }else if(sec.earn >= 0.95 && sec.stRisk <= 25){
+        sec.stFlag = null;
+        sec.stRisk = 0;
+        sec.newsAlpha += 0.020;
+        pushNews('政策', {title:nm+' 完成整改并恢复持续经营能力，撤销退市风险警示', dir:1}, sec.id,
+          '交易所公告 · 摘帽行情');
+      }
+    }
+  });
+}
+
+/* 传闻到期揭晓：证实则延续冲击，辟谣则反向打脸——迟到的真相决定谁被套 */
+function resolveRumors(){
+  const now = state.tickNo;
+  state.rumors = (state.rumors||[]).filter(r=>{
+    if(now - r.born < r.ttl) return true;
+    const ent = r.kind==='idx' ? state.idx[r.id] : state.sectors[r.id];
+    if(!ent) return false;
+    const k = ent.depth ? clamp(0.9/ent.depth, 0.6, 1.6) : 1;
+    if(r.truth){
+      ent.newsAlpha += r.dir*r.alpha*1.0*k;
+      pushNews('证实', {title:r.name+'相关消息获多方证实', dir:r.dir}, r.id,
+        '来源核准 · 可信度 '+Math.round(r.cred*100)+'%');
+    }else{
+      ent.newsAlpha -= r.dir*r.alpha*1.3*k;
+      pushNews('辟谣', {title:r.name+'相关传闻被澄清，消息不实', dir:-r.dir}, r.id,
+        '官方/公司否认 · 原可信度 '+Math.round(r.cred*100)+'%');
+    }
+    return false;
+  });
+}
+
+/* ================= 定价模型 ================= */
+/* ========= 估值中枢（合理价格） =========
+   由宏观基本面推导：增长、流动性、财政、情绪四项合成基本面强弱，
+   再扣掉利率抬升与通胀对估值/成本的压制；债券按利率反向定价。
+   价格偏离中枢越远，代表越贵或越便宜，是"均值回归"的参照线。 */
+function indexFair(sec){
+  const m = state.macro, r = state.rates;
+  const fund = 0.50*m.growth + 0.28*m.liquidity + 0.12*m.policy + 0.10*m.sentiment;
+  const rateDrag = -(r.long-2.5) * 0.03;
+  const inflDrag = sec.inflSensitive ? -m.inflation * 0.06 : 0;
+  const fair = sec.base * (1 + sec.beta*0.12*fund + rateDrag + inflDrag);
+  let tilted = fair;
+  /* 大手模式：产业倾斜给对应板块一个政策溢价（关闭时不影响） */
+  if(state.policy && state.policy.on && state.policy.apply>0){
+    const P = state.policy, k = P.apply;
+    const boost = P.tilt==='infra'   ? (sec.id==='ener'||sec.id==='fin' ? 0.035 : 0.006)
+                : P.tilt==='welfare' ? (sec.id==='cons' ? 0.032 : 0.006)
+                : P.tilt==='tech'    ? (sec.id==='tech' ? 0.038 : 0.005)
+                : 0;
+    tilted = fair * (1 + boost*k*(P.spend>=1 ? 1 : 0.7));
+  }
+  /* 供给冲击的板块分化：成本/需求冲击落在具体板块上 */
+  if(state.policy && state.policy.on && state.policy.supplyShock && state.policy.shockType){
+    const P = state.policy, mag = Math.min(1, Math.abs(P.supplyShock)/0.5);
+    const adj = P.shockType==='oil'   ? (sec.id==='ener' ? 0.050 : sec.id==='cons' ? -0.040 : sec.id==='fin' ? -0.015 : 0)
+              : P.shockType==='chip'  ? (sec.id==='tech' ? -0.055 : sec.id==='cons' ? 0.008 : 0)
+              : P.shockType==='dereg' ? (sec.id==='ener' ? -0.030 : sec.id==='cons' ? 0.020 : 0) : 0;
+    tilted = tilted * (1 + adj*mag);
+  }
+  return +clamp(tilted, sec.base*0.55, sec.base*1.9).toFixed(2);
+}
+function fairValue(sec){
+  const r = state.rates;
+  if(sec.type==='bond') return Math.max(10, +(100-(r.long-2.5)*10).toFixed(2));
+  /* 个股估值 = 所属板块的合理估值 × 自身盈利中枢系数：
+     中枢被永久下修过的公司，价格再跌也不算"错杀"——这就是价值陷阱 */
+  if(sec.kind==='stock'){
+    const g = state.idx[sec.group];
+    const gf = g ? indexFair(g) : sec.base;
+    return +clamp(gf*sec.earn, sec.base*0.25, sec.base*3.2).toFixed(2);
+  }
+  return indexFair(sec);
+}
+function nextPrice(sec){
+  const m = state.macro, r = state.rates, e = state.expect, s = sec;
+  const isBond = s.type === 'bond';
+  // 节奏自适应：每拍噪声随「每日拍数」缩放，使一天的累计波动保持稳定
+  const paceScale = Math.sqrt(10 / Math.max(1, state.ui.barsPerDay));
+
+  // 债券：直接锚定利率反向（利率上行债券跌），低波动、强回归
+  if(isBond){
+    const anchor = 100 - (r.long-2.5)*10;
+    const noise = (Math.random()-0.5)*2*CONFIG.bondVol*paceScale;
+    let p = s.price + 0.12*(anchor-s.price) + s.price*noise;
+    s.newsAlpha *= 0.90;
+    return Math.max(10, +p.toFixed(2));
+  }
+
+  // 利率贴现：高于基准 2.5% 压股票估值；成长股更敏感
+  const ratePenalty = -(r.long-2.5)/100 * (s.inflSensitive?0.35:0.20);
+  // 宏观四因子加权
+  let macroDrift = s.beta*(0.38*m.growth + 0.30*m.liquidity + 0.15*m.policy + 0.17*m.sentiment)*0.0007;
+  if(s.inflSensitive) macroDrift -= m.inflation*0.0018;
+  const gapFactor  = e.bias*0.005;                // 预期差
+  const powerDrift  = (s.bull-s.bear)*0.002;      // 多空博弈
+  if(Math.random()<0.04) s.momentum = (Math.random()-0.5)*0.0025;
+  s.momentum *= 0.76;
+
+  /* —— 连涨连跌的自我约束 ——
+     统计"连续同向段"的长度与累计幅度；段越长、涨跌越多，
+     动量与趋势越难继续，同时内生出现获利了结/抄底的反向冲击。
+     事件驱动的行情（newsAlpha 较大）不受此约束，保留极端场景。 */
+  const signPrev = Math.sign(s.lastShock||0);
+  if(signPrev!==0 && signPrev===(s.runSign||0)){
+    s.runLen = (s.runLen||0)+1;
+    s.runAmp = (s.runAmp||0)+Math.abs(s.lastShock||0);
+  }else{
+    s.runSign = signPrev; s.runLen = 1; s.runAmp = Math.abs(s.lastShock||0);
+  }
+  // 累计同向 5% 时，动量/趋势只剩三成
+  const runDecay = clamp(1 - (s.runAmp||0)/0.050, 0.30, 1);
+
+  /* —— 板块自身景气周期：与宏观不同步，制造"各板块走势各不相同" —— */
+  s.idioPhase += (Math.PI*2)/Math.max(1, s.idioPeriod);
+  const idio = Math.sin(s.idioPhase)*0.0011 * (s.inflSensitive?1.25:0.85);
+
+  /* —— 行业趋势：慢速随机游走 + 惯性，形成持续数日到两三周的单边段 —— */
+  if(Math.random() < 0.035) s.trend += (Math.random()-0.5)*0.0006;
+  s.trend *= 0.965;
+  s.trend  = clamp(s.trend, -0.0010, 0.0010);
+  s.trend  *= runDecay;
+
+  /* —— 波动聚集：大波动之后一段时间内波动持续偏大（GARCH 味道） —— */
+  s.volLevel = clamp(s.volLevel*0.88 + 0.12*(1 + 1.8*Math.abs(s.lastShock||0)), 0.7, 1.7);
+
+  const noise = (Math.random()-0.5)*2*CONFIG.volatility*paceScale*s.volLevel*0.8;
+  /* 分歧冲击：连续同向累计越多，越容易出现止盈/抄底这类反向力量 */
+  const fadeP = clamp((s.runAmp||0)*14, 0, 0.44);
+  /* 走得太远时，即便有事件在场，也会被反向资金打断（避免事件期无限单边） */
+  const fadeOn = Math.abs(s.newsAlpha) < 0.005 || (s.runAmp||0) > 0.10;
+  let fade = 0;
+  if(s.runSign!==0 && fadeOn && Math.random() < fadeP){
+    /* 打断方式以"抽掉趋势燃料"为主：幅度小，但能把惯性打散 */
+    fade = -s.runSign*(0.0022 + Math.random()*0.005);
+    s.trend *= 0.35; s.momentum *= 0.35;
+  }
+  let shock = ratePenalty + macroDrift + gapFactor + powerDrift + s.newsAlpha
+            + s.momentum*runDecay + s.trend + idio + noise + fade;
+  shock = clamp(shock, -0.04, 0.04);
+
+  /* —— 向估值中枢回归：锚定 fairValue 而非固定基准，回拉很轻，
+        半衰期约 6 个交易日，允许趋势和板块自身周期走出来 —— */
+  const anchor = fairValue(s);
+  const dev = (anchor - s.price)/Math.max(1, anchor);
+  let pull = 0.018*dev;
+  if(Math.abs(dev) > 0.28) pull += 0.025*(dev - Math.sign(dev)*0.28);
+
+  let p = s.price + s.price*pull + s.price*shock;
+  s.lastShock = shock;
+  s.newsAlpha *= 0.72;
+  return Math.max(10, +p.toFixed(2));
+}
+function nextStockPrice(st, idxRet){
+  const m = state.macro, e = state.expect, r = state.rates;
+  const paceScale = Math.sqrt(10 / Math.max(1, state.ui.barsPerDay));
+  /* 个股盘口厚度：跟随全市场深度漂移，薄盘口噪声更大、跳价更凶 */
+  st.depth = clamp(st.depth*0.9 + 0.1*(state.depth*(0.8+Math.random()*0.5)), 0.35, 1.9);
+  const depthPenalty = clamp(1.35/st.depth, 0.75, 1.8);
+
+  /* 公司自身景气小周期（与板块不同步） */
+  st.idioPhase += (Math.PI*2)/Math.max(1, st.idioPeriod);
+  const idio = Math.sin(st.idioPhase)*0.0005;
+
+  /* 公司经营趋势：慢速游走，制造个股级别的单边段 */
+  if(Math.random() < 0.05) st.trend += (Math.random()-0.5)*0.0005;
+  st.trend *= 0.975;
+  st.trend  = clamp(st.trend, -0.0007, 0.0007);
+
+  /* —— 连涨连跌的自我约束 —— */
+  const signPrev = Math.sign(st.lastRet||0);
+  if(signPrev!==0 && signPrev===(st.runSign||0)){
+    st.runLen = (st.runLen||0)+1;
+    st.runAmp = (st.runAmp||0)+Math.abs(st.lastRet||0);
+  }else{
+    st.runSign = signPrev; st.runLen = 1; st.runAmp = Math.abs(st.lastRet||0);
+  }
+  const runDecay = clamp(1 - (st.runAmp||0)/0.055, 0.28, 1);
+
+  /* 动量正反馈：连续同向的收益会吸来趋势资金，但涨得越多、动量越弱 */
+  st.mom = (st.mom||0)*0.84 + (st.lastRet||0)*0.10;
+  st.mom = clamp(st.mom, -0.0010, 0.0010);
+
+  /* 波动聚集 */
+  st.volLevel = clamp(st.volLevel*0.88 + 0.12*(1 + 1.8*Math.abs(st.lastShock||0)), 0.7, 1.8);
+
+  const noise = (Math.random()-0.5)*2*CONFIG.volatility*paceScale*st.volLevel*0.62*depthPenalty;
+
+  const anchor = fairValue(st);
+  const dev = (anchor - st.price)/Math.max(1, anchor);
+  /* 向个股自身估值回归：半衰期约 3~4 个交易日，够慢，让趋势能走出来 */
+  let pull = clamp(0.030*dev, -0.015, 0.015);
+
+  const ratePenalty = -(r.long-2.5)/100 * (st.inflSensitive?0.28:0.16);
+  /* 薄盘口下的"流动性空洞"：没有消息也会突然跳一下，这是纯结构噪声 */
+  const hole = (st.depth < 0.75 && Math.random() < 0.03) ? (Math.random()-0.5)*0.014*depthPenalty : 0;
+  /* 分歧冲击：小涨小跌时几乎不出现，累计走出一段后大概率被兑现盘打断 */
+  const fadeP = clamp((st.runAmp||0)*14, 0, 0.36);
+  let fade = 0;
+  if(st.runSign!==0 && Math.abs(st.newsAlpha) < 0.004 && Math.random() < fadeP){
+    fade = -st.runSign*(0.0026 + Math.random()*0.006);
+    st.trend *= 0.35; st.mom *= 0.35;
+  }
+  const shock = st.beta*idxRet + idio + st.trend*runDecay + st.mom*0.07*runDecay + st.newsAlpha
+              + (st.edge||0) + ratePenalty + noise + hole + fade;
+  const shockC = clamp(shock, -0.045, 0.045);
+
+  let p = st.price*(1 + pull + shockC);
+
+  /* —— 涨跌停板（现实规则）——
+     风险警示股 ±5%，普通个股 ±10%。以「当日开盘价」为基准，
+     所以价格触及后钉在板上，下一天开盘才重新计算 —— 这就是一字板与连板的来源 */
+  const dayO = (st.curBar && st.curBar.o) ? st.curBar.o : st.price;
+  const lim = st.stFlag ? 0.05 : 0.10;
+  const upP = dayO*(1+lim), dnP = dayO*(1-lim);
+  if(p > upP) p = upP;
+  if(p < dnP) p = dnP;
+  st.limitHit = (p >= upP-0.0008) ? 1 : (p <= dnP+0.0008) ? -1 : 0;
+  /* 封板时盘口迅速变薄：买不到、卖不掉，这是 ST 连板最真实的体感 */
+  if(st.limitHit) st.depth = clamp(st.depth*0.94, 0.30, 1.9);
+
+  st.lastShock = shockC;
+  st.lastRet = p/st.price - 1;          // 用实际成交收益（含限板），动量反馈才对
+  st.newsAlpha *= 0.72;
+  return Math.max(3, +p.toFixed(2));
+}
+function updatePower(s, move){
+  s.bull *= 0.84; s.bear *= 0.84;
+  if(move>0) s.bull += move*2; else if(move<0) s.bear += -move*2;
+  s.bull = Math.max(0, s.bull); s.bear = Math.max(0, s.bear);
+}
+function buildBook(s){
+  const d = Math.max(0.35, s.depth||1);
+  const spread = 0.06/d;                       // 盘口越薄，买卖价差越宽
+  const bids = [], asks = [];
+  for(let i=1;i<=3;i++){
+    bids.push({price:+(s.price-spread*i).toFixed(2), qty:Math.floor((80+Math.random()*200+s.bull*50)*d)});
+    asks.push({price:+(s.price+spread*i).toFixed(2), qty:Math.floor((80+Math.random()*200+s.bear*50)*d)});
+  }
+  return {bids, asks};
+}
+/* 成交滑点：薄盘口下大额单会吃到更差的价格 */
+function slipOf(sec){
+  const d = Math.max(0.35, sec.depth||1);
+  return clamp(0.0011/d, 0.0006, 0.0045);
+}
+
+/* ================= 主循环 ================= */
+function pushSeries(sec, price, dv){
+  const prev = sec.price;
+  sec.price = price;
+  const move = price/prev - 1;
+  updatePower(sec, move);
+  sec.volume += dv;
+  sec.turnover += price * (Math.random()*50);
+  sec.history.push(price);
+  if(sec.history.length > CONFIG.maxPoints) sec.history.shift();
+  sec.fairHist.push(fairValue(sec));
+  if(sec.fairHist.length > CONFIG.maxPoints) sec.fairHist.shift();
+  sec.volHist.push(dv);
+  if(sec.volHist.length > CONFIG.maxPoints) sec.volHist.shift();
+
+  /* —— 合成 K 线：每 barsPerDay 拍收敛成一根日线 —— */
+  const b = sec.curBar;
+  b.h = Math.max(b.h, price);
+  b.l = Math.min(b.l, price);
+  b.c = price;
+  b.v += dv;
+  sec.barTick++;
+  if(sec.barTick >= Math.max(1, state.ui.barsPerDay)){
+    sec.bars.push({o:b.o, h:b.h, l:b.l, c:b.c, v:b.v});
+    if(sec.bars.length > CONFIG.maxBars) sec.bars.shift();
+    sec.fairBars.push(fairValue(sec));
+    if(sec.fairBars.length > CONFIG.maxBars) sec.fairBars.shift();
+    sec.barTick = 0;
+    sec.curBar = {o:price, h:price, l:price, c:price, v:0};
+  }
+  sec.open = sec.curBar.o; sec.high = sec.curBar.h; sec.low = sec.curBar.l;
+}
+
+/* ================= 大手模式：政策引擎 =================
+   关闭时 policyStep 直接返回，updateRates 与 indexFair 也都不走政策分支，
+   因此绝不会对定价产生任何影响。 */
+/* 供给冲击是"外生事件"，不吃政策时滞：按下即生效，然后逐步被消化 */
+const SHOCKS = {
+  oil:   {name:'能源涨价', v: 0.55, left: 24},
+  chip:  {name:'技术断供', v: 0.45, left: 24},
+  dereg: {name:'解除管制', v:-0.40, left: 24},
+};
+/* 快捷模板：一次把财政与货币组合调到某套"情景"，仍照常走时滞 */
+const POLICY_PRESETS = {
+  stable:      {name:'稳增长',   desc:'宽财政＋宽货币，基建发力、降息投放，总需求与估值一起抬升',
+                spend:1.20, tax:0.95, tilt:'infra',   rateMode:'cut',  liqMode:'ease',  shock:null},
+  taxcut:      {name:'减税惠民', desc:'减税为主、支出温和扩张，倾斜民生，利好消费但赤字扩张更快',
+                spend:1.10, tax:0.88, tilt:'welfare', rateMode:'hold', liqMode:'neutral', shock:null},
+  industry:    {name:'产业扶持', desc:'支出小幅扩张并把结构转给产业补贴，科技板块拿到政策溢价',
+                spend:1.05, tax:1.00, tilt:'tech',    rateMode:'hold', liqMode:'neutral', shock:null},
+  tighten:     {name:'降温紧缩', desc:'削支出、加税、加息并收紧流动性，压通胀也压估值',
+                spend:0.85, tax:1.05, tilt:'neutral', rateMode:'hike', liqMode:'tight',   shock:null},
+  stagflation: {name:'滞胀应对', desc:'能源涨价推高成本、财政被迫收缩，央行忌惮增长而按兵不动：通胀高企、增长下行同时出现',
+                spend:0.92, tax:1.05, tilt:'neutral', rateMode:'hold', liqMode:'neutral',
+                shock:'oil', shockPeak:0.85, shockLeft:70},
+  rescue:      {name:'危机救援', desc:'财政货币极限宽松＋救助民生，赤字与债务快速累积，长端利率反被债务推高',
+                spend:1.30, tax:0.90, tilt:'welfare', rateMode:'cut',  liqMode:'ease',  shock:null},
+};
+function applyPreset(key){
+  const P = state.policy, T = POLICY_PRESETS[key];
+  if(!P || !T) return;
+  if(!P.on){                       // 模板也负责把工具箱打开
+    P.on = true;
+    el.togglePolicy.textContent = '已开启';
+    el.togglePolicy.classList.add('on');
+    el.policyBox.classList.add('show');
+  }
+  P.spend = T.spend; P.tax = T.tax; P.tilt = T.tilt;
+  P.rateMode = T.rateMode; P.liqMode = T.liqMode;
+  P.lagIn = 8; P.apply = 0;        // 组合仍需走一遍时滞
+  P.preset = key;
+  if(T.shock){                     // 情景里带的供给冲击是外生事件，按下即生效
+    const S = SHOCKS[T.shock];
+    P.shockType = T.shock;
+    P.shockPeak = T.shockPeak || S.v;
+    P.supplyShock = P.shockPeak;
+    P.shockDur = P.shockLeft = T.shockLeft || S.left;
+  }else{
+    P.shockType = null; P.shockLeft = 0; P.shockDur = 0; P.shockPeak = 0; P.supplyShock = 0;
+  }
+  pushPolicyNews('采用政策模板「'+T.name+'」：'+T.desc);
+  renderPolicy(); renderMacro(); render();
+}
+
+function applyShock(type){
+  const P = state.policy, S = SHOCKS[type];
+  if(!P || !P.on || !S) return;
+  const again = P.shockType === type && P.shockLeft > 0;
+  P.shockType = type;
+  P.shockPeak = S.v;
+  P.supplyShock = S.v;
+  P.shockDur = P.shockLeft = S.left;
+  pushPolicyNews((again ? '供给冲击再起：' : '供给端事件：') + S.name +
+                 '（强度 '+Math.abs(S.v).toFixed(2)+'，约 '+(S.left/10).toFixed(1)+' 个交易日内逐步消化）');
+  renderPolicy(); renderMacro(); render();
+}
+function policyStep(){
+  const P = state.policy;
+  if(!P || !P.on) return;
+  const m = state.macro;
+  const fis = P.spend - 1;                     // 财政净扩张（负=紧缩）
+  const tax = P.tax - 1;                       // 税负变化（正=加税）
+  const tiltMul = P.tilt==='infra' ? 1.30 : P.tilt==='welfare' ? 0.90 : P.tilt==='tech' ? 1.05 : 1.0;
+  const sh = P.supplyShock;                    // 外生冲击：即时生效，不受政策时滞约束
+
+  /* 1) 政策：内部时滞 → 外部时滞 */
+  let k = 0;
+  if(P.lagIn > 0){
+    P.lagIn--; P.apply = 0;                    // 还在"宣布"阶段，尚未落地
+  }else{
+    P.apply = Math.min(1, P.apply + 1/Math.max(1, P.lagOut));   // 逐拍见效
+    k = P.apply;
+    m.growth    = clamp(m.growth    + (fis*0.62 - tax*0.42)*k, -1, 1);
+    m.inflation = clamp(m.inflation + (fis*0.50*tiltMul)*k, -1, 1);
+    m.sentiment = clamp(m.sentiment + (fis*0.32)*k, -1, 1);
+    m.policy    = clamp(m.policy    + fis*0.55*k, -1, 1);
+  }
+
+  /* 2) 外生供给冲击：不论政策是否落地都计入 */
+  if(sh){
+    m.growth    = clamp(m.growth    - sh*0.38, -1, 1);
+    m.inflation = clamp(m.inflation + sh*0.55, -1, 1);
+    m.sentiment = clamp(m.sentiment - sh*0.42, -1, 1);
+  }
+
+  /* 3) 财政账本（演示口径）：赤字率随扩张抬升，债务率缓慢累积 */
+  P.deficit = clamp(2.0 + fis*11 - tax*6 + sh*5, -3, 20);
+  P.debt    = clamp(P.debt + (P.deficit - 2.5)*0.02*Math.max(0.05,k), 0, 150);
+
+  /* 4) 冲击消化：每拍衰减，到期自动释放按钮 */
+  if(P.shockLeft > 0){
+    P.shockLeft--;
+    P.supplyShock = P.shockPeak * (P.shockLeft / Math.max(1, P.shockDur));   // 线性消化，中段仍有力
+    if(P.shockLeft === 0){
+      P.shockLeft = 0; P.shockType = null; P.supplyShock = 0; P.shockPeak = 0; P.shockDur = 0;
+    }
+  } else if(P.supplyShock){
+    P.supplyShock = 0; P.shockType = null; P.shockPeak = 0; P.shockDur = 0;
+  }
+}
+/* 调整任何政策档位：重新走一遍时滞（内部时滞里旧政策已撤，传动归零） */
+function setPolicy(patch, note){
+  const P = state.policy;
+  Object.assign(P, patch);
+  P.lagIn = 8;              // 内部时滞：约一天（10 拍/天）才落地，之前只是"宣布"
+  P.apply = 0;              // 外部时滞：从零开始累积
+  P.preset = null;          // 手动微调即退出模板
+  if(note) pushPolicyNews(note);
+  renderPolicy(); renderMacro(); render();
+}
+function pushPolicyNews(text){
+  if(!text) return;                       // 防御：没有文案就不发资讯，避免出现"政策：undefined"
+  state.newsFeed.unshift({time:nowTime(), tag:'政策', cls:'policy', title:String(text), scope:'market', extra:''});
+  if(state.newsFeed.length > CONFIG.newsMax) state.newsFeed.pop();
+}
+function togglePolicyMode(){
+  const P = state.policy;
+  P.on = !P.on;
+  P.lagIn = P.on ? 8 : 0;
+  P.apply = 0;
+  if(!P.on){ P.shockType = null; P.shockLeft = 0; P.shockDur = 0; P.shockPeak = 0; P.supplyShock = 0; P.preset = null; }
+  el.togglePolicy.textContent = P.on ? '已开启' : '关闭';
+  el.togglePolicy.classList.toggle('on', P.on);
+  el.policyBox.classList.toggle('show', P.on);
+  pushPolicyNews(P.on ? '大手模式已开启：你可以亲手调节财政与货币，观察政策如何传导到市场'
+                     : '大手模式已关闭：政策工具箱隐藏，市场回到自发运行');
+  render();
+}
+function renderPolicy(){
+  const P = state.policy; if(!el.policyBox) return;
+  if(el.polSpend) el.polSpend.textContent = P.spend.toFixed(2)+'×';
+  if(el.polTax)   el.polTax.textContent   = P.tax.toFixed(2)+'×';
+  if(el.polShock){
+    el.polShock.textContent = (P.shockLeft>0 && P.shockType && SHOCKS[P.shockType])
+      ? (SHOCKS[P.shockType].name+' 生效中 · 剩 '+P.shockLeft+' 拍 · 强度 '+P.supplyShock.toFixed(2))
+      : '当前无供给冲击';
+  }
+  if(el.policyBox){
+    el.policyBox.querySelectorAll('[data-shock]').forEach(b=>{
+      b.classList.toggle('on', P.shockLeft>0 && P.shockType===b.dataset.shock);
+    });
+  }
+  if(el.polFill)  el.polFill.style.width  = (P.apply*100).toFixed(0)+'%';
+  if(el.polLag){
+    el.polLag.textContent = P.lagIn>0 ? ('内部时滞 '+P.lagIn+' 拍 · 等待落地')
+      : (P.apply<0.99 ? ('外部时滞 · 传导 '+(P.apply*100).toFixed(0)+'%') : '已充分传导');
+  }
+  if(el.polBook){
+    el.polBook.textContent = P.on
+      ? ('赤字率 '+P.deficit.toFixed(1)+'% · 债务率 '+P.debt.toFixed(0)+'%')
+      : '赤字率 — · 债务率 —';
+  }
+  if(el.polPresetNote){
+    const T = P.preset && POLICY_PRESETS[P.preset];
+    el.polPresetNote.textContent = T
+      ? ('当前模板「'+T.name+'」：'+T.desc)
+      : '一键套用整套政策组合，仍照常走内部／外部时滞；套用后手动微调任一项，模板即退出高亮。';
+  }
+  const presetRow = el.policyBox.querySelector('#polPreset');
+  if(presetRow) presetRow.querySelectorAll('.chip').forEach(c=>c.classList.toggle('on', P.preset===c.dataset.preset));
+  if(el.polTilt) el.polTilt.querySelectorAll('.chip').forEach(c=>c.classList.toggle('on', c.dataset.tilt===P.tilt));
+  if(el.polRate) el.polRate.querySelectorAll('.chip').forEach(c=>c.classList.toggle('on', c.dataset.rate===P.rateMode));
+  if(el.polLiq)  el.polLiq.querySelectorAll('.chip').forEach(c=>c.classList.toggle('on', c.dataset.liq===P.liqMode));
+}
+
+function marketStep(){
+  state.tickNo++;
+  updateMacro(); policyStep(); updateRates(); updateExpect();
+  const dens = NEWS_DENSITY[(state.ui && state.ui.newsDensity) || 'slim'] || NEWS_DENSITY.slim;
+  newsBudget = Math.min(dens.cap, (newsBudget || 0) + dens.rate);
+  triggerEvent();
+  /* 市场深度：流动性越松、情绪越稳，盘口越厚；恐慌或通胀高企时盘口变薄 */
+  const m = state.macro;
+  const targetDepth = clamp(1.15 + 0.45*m.liquidity - 0.35*Math.abs(m.sentiment)
+                          - 0.5*Math.max(0, m.inflation-0.35), 0.5, 1.7);
+  state.depth = clamp(state.depth*0.92 + 0.08*(targetDepth + (Math.random()-0.5)*0.35), 0.4, 1.8);
+  resolveRumors();
+  stStatusStep();
+
+  /* 第一层：板块指数（不可交易，只作为个股的共同驱动） */
+  ['tech','cons','fin','ener'].forEach(gid=>{
+    const idx = state.idx[gid];
+    const prev = idx.price;
+    const p = nextPrice(idx);
+    idx.lastRet = p/prev - 1;                     // 本拍板块收益，供个股做 β 暴露
+    pushSeries(idx, p, Math.floor(200 + Math.random()*600 + Math.abs(idx.lastRet)*20000));
+  });
+
+  /* 第二层：个股 = 板块收益 × β + 公司 α + 动量 + 自身估值回归 */
+  STOCKS.forEach(st=>{
+    const sec = state.sectors[st.id];
+    if(!sec) return;
+    const idx = state.idx[st.group];
+    const ret = idx ? (idx.lastRet||0) : 0;
+    const p = nextStockPrice(sec, ret);
+    pushSeries(sec, p, Math.floor(50 + Math.random()*150 + Math.abs(ret)*9000));
+  });
+
+  /* 债券指数：可交易，用利率反向定价 */
+  const bond = state.sectors['bond'];
+  if(bond){
+    const prev = bond.price;
+    const p = nextPrice(bond);
+    bond.lastRet = p/prev - 1;
+    pushSeries(bond, p, Math.floor(20 + Math.random()*60));
+  }
+
+  /* 板块指数同步到 UI 状态里（利率卡/背景对比用） */
+  const r = state.rates;
+  if(state.idx.tech) r.bondIndex = state.sectors['bond'] ? state.sectors['bond'].price : r.bondIndex;
+}
+
+function tick(){
+  if(state.finished || state.preSim) return;
+  marketStep();
+  checkOrders();                           // 限价挂单：价格触及即成交
+  if(state.tickNo % 5 === 0) saveGame();   // 每 5 拍自动存档
+  render();
+}
+
+/* ================= 组合与交易 ================= */
+function portfolio(){
+  let posVal=0, totalPnl=0, grossPnl=0;
+  Object.keys(state.pos).forEach(id=>{
+    const p = state.pos[id];
+    if(p.qty<=0) return;
+    const sec = state.sectors[id];
+    p.pnl = p.dir*p.qty*(sec.price-p.entry);
+    posVal += p.entry*p.qty + p.pnl;
+    totalPnl += p.pnl;
+    grossPnl += Math.abs(p.pnl);
+  });
+  return {posVal, totalPnl, grossPnl, total:state.cash+posVal};
+}
+function canTrade(){
+  if(state.preSim){ toast('历史市场预演中，暂不可交易'); return false; }
+  return true;
+}
+function openPos(dir){
+  if(!canTrade()) return;
+  const sec = cur();
+  if(sec.kind==='index' && dir!==1){ toast('指数基金只能做多，做空请到旗下个股'); return; }
+  if(sec.type==='bond' && dir!==1){ toast('债券只能做多，作为对冲配置'); return; }
+  const existing = state.pos[sec.id];
+  if(existing && existing.qty>0 && existing.dir!==dir) closeSec(sec.id);
+  const bet = state.cash*state.ratio;
+  if(bet<100){ toast('可用资金不足'); return; }
+  const fee = bet*CONFIG.fee;
+  const slip = slipOf(sec);
+  const fill = +(sec.price*(1+dir*slip)).toFixed(2);   // 买方吃卖价，卖方砸买价
+  const qty = (bet-fee)/fill;
+  state.cash -= bet;
+  const now = state.pos[sec.id] || {dir:0,entry:0,bet:0,qty:0,pnl:0};
+  const act = (now.qty>0 && now.dir===dir) ? '加仓' : '开仓';
+  if(now.qty>0 && now.dir===dir){
+    const newQty = now.qty+qty;
+    now.entry = (now.entry*now.qty + fill*qty)/newQty;
+    now.qty = newQty; now.bet += bet;
+  }else{
+    state.pos[sec.id] = {dir, entry:fill, bet, qty, pnl:0};
+  }
+  state.trades++;
+  logTrade(act+(dir===1?'(多)':'(空)'), sec, qty, fill, bet, null);
+  toast(`${sec.name} ${dir===1?'做多':'做空'}开仓 ${fmt(bet)}`
+    + (slip>0.0015 ? ' · 滑点 '+(slip*100).toFixed(2)+'%（盘口偏薄）' : ''));
+  finishCheck(); render();
+}
+function addPos(){
+  const sec = cur(), p = state.pos[sec.id];
+  if(!p||p.qty<=0){ toast('当前无持仓可加仓'); return; }
+  openPos(p.dir);
+}
+function reducePos(frac){
+  if(!canTrade()) return;
+  const sec = cur(), p = state.pos[sec.id];
+  if(!p||p.qty<=0){ toast('当前无持仓'); return; }
+  const slip = slipOf(sec);
+  const fill = +(sec.price*(1-p.dir*slip)).toFixed(2);   // 平仓同样吃滑点
+  const qty = p.qty*frac;
+  const pnl = p.dir*qty*(fill-p.entry);
+  state.cash += p.entry*qty + pnl;
+  p.qty -= qty; p.bet *= (1-frac);
+  if(p.qty<0.01){ p.qty=0; p.dir=0; p.entry=0; p.bet=0; }
+  state.trades++;
+  logTrade('减仓'+Math.round(frac*100)+'%', sec, qty, fill, qty*fill, pnl);
+  toast(`${sec.name} 减仓 ${Math.round(frac*100)}%，实现盈亏 ${fmt(pnl)}`
+    + (slip>0.0015 ? '（含滑点）' : ''));
+  finishCheck(); render();
+}
+function closeSec(id){
+  const p = state.pos[id], sec = state.sectors[id];
+  if(!p||p.qty<=0) return;
+  const slip = slipOf(sec);
+  const fill = +(sec.price*(1-p.dir*slip)).toFixed(2);
+  const pnl = p.dir*p.qty*(fill-p.entry);
+  state.cash += p.entry*p.qty + pnl;
+  state.pos[id] = {dir:0,entry:0,bet:0,qty:0,pnl:0};
+  logTrade('平仓', sec, p.qty, fill, p.qty*fill, pnl);
+  toast(`${sec.name} 平仓，盈亏 ${fmt(pnl)}`);
+}
+let orderSide = 1;
+
+/* ================= 限价挂单 ================= */
+function placeOrder(side, price){
+  if(!canTrade()) return;
+  const sec = cur();
+  if(sec.kind==='index' && side!==1){ toast('指数基金只能做多'); return; }
+  if(sec.type==='bond' && side!==1){ toast('债券只能做多，作为对冲配置'); return; }
+  price = +(+price).toFixed(2);
+  if(!(price>0)){ toast('目标价无效'); return; }
+  state.orders = state.orders || [];
+  if(state.orders.length >= 6){ toast('最多同时挂 6 笔单'); return; }
+  state.orders.push({secId:sec.id, side, price, frac:state.ratio, t:Date.now()});
+  toast('已挂单 · '+sec.name+' '+(side===1?'买入':'做空')+' @ '+price.toFixed(2)
+        +'（现价 '+sec.price.toFixed(2)+'）');
+  render();
+}
+function cancelOrder(i){
+  state.orders.splice(i,1);
+  toast('已撤销挂单');
+  render();
+}
+function checkOrders(){
+  if(!state.orders || !state.orders.length) return;
+  const keep = [];
+  state.orders.forEach(o=>{
+    const sec = state.sectors[o.secId];
+    if(!sec) return;
+    const hit = o.side===1 ? sec.price <= o.price : sec.price >= o.price;
+    if(!hit){ keep.push(o); return; }
+    if(!executeOrder(o, sec)) return;      // 资金不足则撤销
+  });
+  state.orders = keep;
+}
+function executeOrder(o, sec){
+  const bet = state.cash*(o.frac||0.3);
+  if(bet < 100){ toast(sec.name+' 挂单资金不足，已撤销'); return false; }
+  if(state.preSim) return false;
+  const existing = state.pos[sec.id];
+  if(existing && existing.qty>0 && existing.dir!==o.side) closeSec(sec.id);
+  const fee = bet*CONFIG.fee;
+  const qty = (bet-fee)/o.price;
+  state.cash -= bet;
+  const now = state.pos[sec.id] || {dir:0, entry:0, bet:0, qty:0, pnl:0};
+  const isAdd = (now.qty>0 && now.dir===o.side);
+  if(isAdd){
+    const nq = now.qty+qty;
+    now.entry = (now.entry*now.qty + o.price*qty)/nq;
+    now.qty = nq; now.bet += bet;
+  }else{
+    state.pos[sec.id] = {dir:o.side, entry:o.price, bet, qty, pnl:0};
+  }
+  state.trades++;
+  logTrade((isAdd?'限价加仓':'限价开仓')+(o.side===1?'(多)':'(空)'), sec, qty, o.price, bet, null);
+  toast(sec.name+' 限价单成交 @ '+o.price.toFixed(2));
+  finishCheck();
+  return true;
+}
+function openOrderPanel(price){
+  if(!el.ordSheet) return;
+  const sec = cur();
+  const p = +price > 0 ? +price : +(sec.price*0.99).toFixed(2);
+  orderSide = p <= sec.price ? 1 : -1;
+  el.ordSide.querySelectorAll('.chip').forEach(c=>c.classList.toggle('on', +c.dataset.side===orderSide));
+  el.ordSecName.textContent = labelOf(sec);
+  el.ordCur.textContent = '现价 ' + sec.price.toFixed(2);
+  el.ordPrice.value = p.toFixed(2);
+  el.ordHint.textContent = '目标价 ' + p.toFixed(2) + ' · 距现价 ' + ((p/sec.price-1)*100).toFixed(2) + '%';
+  setRatio(state.ratio);
+  el.ordMask.classList.add('show');
+  el.ordSheet.classList.add('open');
+  syncSheetToKeyboard();
+  /* 等浮层动画/键盘弹起后再聚焦，避免输入框被挡住 */
+  setTimeout(()=>{ try{ el.ordPrice.focus({preventScroll:true}); el.ordPrice.select(); }catch(e){} }, 180);
+}
+function closeOrderPanel(){
+  if(el.ordSheet) el.ordSheet.classList.remove('open');
+  if(el.ordMask) el.ordMask.classList.remove('show');
+  if(el.ordSheet) el.ordSheet.style.bottom = '0px';
+  try{ el.ordPrice.blur(); }catch(e){}
+}
+/* 键盘遮挡修复：让浮层始终贴在键盘上沿 */
+function syncSheetToKeyboard(){
+  if(!el.ordSheet || !el.ordSheet.classList.contains('open')) return;
+  const vv = window.visualViewport;
+  if(!vv){ el.ordSheet.style.bottom = '0px'; return; }
+  const kb = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+  el.ordSheet.style.bottom = kb + 'px';
+  el.ordSheet.style.maxHeight = Math.max(200, Math.round(vv.height * 0.92)) + 'px';
+}
+if(window.visualViewport){
+  visualViewport.addEventListener('resize', syncSheetToKeyboard);
+  visualViewport.addEventListener('scroll', syncSheetToKeyboard);
+}
+window.addEventListener('resize', syncSheetToKeyboard);
+
+let ordSig = '';
+function renderOrders(){
+  if(!el.ordList) return;
+  const list = state.orders || [];
+  el.ordCount.textContent = list.length + ' / 6';
+  if(!list.length){
+    if(ordSig !== 'empty'){
+      el.ordList.innerHTML = '<div class="ord-empty">暂无挂单。行情快、手点跟不上时，先设一个目标价，到价自动成交。</div>';
+      ordSig = 'empty';
+    }
+    return;
+  }
+  const sig = list.map(o=>o.secId+'|'+o.side+'|'+o.price+'|'+o.frac).join(',');
+  if(sig !== ordSig){
+    el.ordList.innerHTML = list.map((o,i)=>{
+      const sec = state.sectors[o.secId]; if(!sec) return '';
+      const cls = o.side===1 ? 'var(--up)' : 'var(--down)';
+      return '<div class="ord-item"><span>'+sec.name+' <b style="color:'+cls+'">'
+        +(o.side===1?'买':'空')+'</b> @ <b>'+o.price.toFixed(2)+'</b></span>'
+        +'<span class="ord-dist" style="color:var(--muted)"></span>'
+        +'<span style="color:var(--muted)">'+Math.round((o.frac||0.3)*100)+'%仓</span>'
+        +'<button class="ord-x" data-cancel="'+i+'">撤销</button></div>';
+    }).join('');
+    el.ordList.querySelectorAll('[data-cancel]').forEach(b=>{
+      b.onclick = ()=>cancelOrder(+b.dataset.cancel);
+    });
+    ordSig = sig;
+  }
+  // 距离随价格变化，原地刷新而不重建行
+  el.ordList.querySelectorAll('.ord-dist').forEach((sp,i)=>{
+    const o = list[i]; const sec = state.sectors[o.secId];
+    if(!sec) return;
+    const chg = (o.price/sec.price-1)*100;
+    sp.textContent = '距离 ' + (chg>=0?'+':'') + chg.toFixed(2) + '%';
+  });
+}
+function setRatio(v){
+  state.ratio = v;
+  document.querySelectorAll('[data-r]').forEach(b=>{
+    const on = Math.abs((+b.dataset.r) - v) < 1e-9;
+    b.classList.toggle('on', on);
+    b.classList.toggle('active', on);
+  });
+  if(el.ordAmt) el.ordAmt.textContent = '预计占用 ' + fmt(state.cash*v) + '（可用 ' + fmt(state.cash) + '）';
+}
+function renderDock(){
+  if(!el.tradeDock) return;
+  const sec = cur(); if(!sec) return;
+  const chg = sec.price/prevClose(sec)-1;
+  el.dockName.textContent = sec.kind==='index' ? (sec.fundName||sec.name) + '·指数基金'
+    : ((GROUP_MAP[sec.group]||{}).name || '债券') + '·' + sec.name;
+  el.dockPrice.textContent = fmt(sec.price);
+  el.dockChg.textContent = (chg>=0?'+':'') + (chg*100).toFixed(2) + '%';
+  el.dockChg.style.color = chg>=0 ? 'var(--up)' : 'var(--down)';
+  const lock = state.preSim;
+  const longOnly = (sec.kind==='index' || sec.type==='bond');   // 指数基金/债券无融券，只能做多
+  [el.btnBuy, el.btnClose, el.btnLimit].forEach(b=>{ if(b) b.disabled = lock; });
+  if(el.btnSell){
+    el.btnSell.disabled = lock || longOnly;
+    el.btnSell.title = longOnly ? '指数基金/债券只能做多' : '';
+  }
+  const held = Object.keys(state.pos||{}).some(k=>state.pos[k] && state.pos[k].qty>0);
+  if(el.dockSub) el.dockSub.classList.toggle('show', held);
+}
+
+function closeAll(){
+  if(!canTrade()) return;
+  Object.keys(state.pos).forEach(id=>closeSec(id));
+  state.trades++;
+  finishCheck(); render();
+}
+function finishCheck(){
+  const limit = state.ui.rounds;
+  if(limit>0 && state.trades>=limit && !state.finished){
+    state.finished = true;
+    showResult(portfolio());
+  }
+}
+function grade(total){
+  const r = (total-CONFIG.startBalance)/CONFIG.startBalance;
+  if(r>=0.5) return ['S','顶级操盘手'];
+  if(r>=0.2) return ['A','优秀交易员'];
+  if(r>=0.05) return ['B','稳健交易者'];
+  if(r>=-0.05) return ['C','及格线附近'];
+  if(r>=-0.2) return ['D','风险管控偏弱'];
+  return ['E','需要复盘总结'];
+}
+
+/* ================= 渲染 ================= */
+function setBar(barEl, val){
+  barEl.innerHTML = '';
+  const f = document.createElement('div');
+  f.className = 'fill '+(val>=0?'pos':'neg');
+  f.style.width = (Math.abs(val)*50)+'%';
+  barEl.appendChild(f);
+}
+function renderStats(){
+  const pf = portfolio();
+  el.totalAsset.textContent = fmt(pf.total);
+  el.cash.textContent = fmt(state.cash);
+  el.posVal.textContent = fmt(pf.posVal);
+  const r = (pf.total-CONFIG.startBalance)/CONFIG.startBalance*100;
+  el.rate.textContent = r.toFixed(2)+'%';
+  el.rate.className = 'value '+(r>=0?'up':'down');
+  el.volRate.textContent = (pf.grossPnl/CONFIG.startBalance*100).toFixed(2)+'%';
+}
+function renderMacro(){
+  const m = state.macro;
+  el.gGrowth.textContent = m.growth.toFixed(2);
+  el.gInflation.textContent = m.inflation.toFixed(2);
+  el.gLiquidity.textContent = m.liquidity.toFixed(2);
+  el.gPolicy.textContent = m.policy.toFixed(2);
+  setBar(el.barGrowth,m.growth); setBar(el.barInflation,m.inflation);
+  setBar(el.barLiquidity,m.liquidity); setBar(el.barPolicy,m.policy);
+}
+const MODE_NAME = {doubleBoom:'股债双牛',doubleKill:'股债双杀',bondFlow:'债强股弱',equityFlow:'股强债弱',balance:'均衡跷跷板'};
+function renderRates(){
+  const r = state.rates;
+  el.rateLong.textContent = r.long.toFixed(2)+'%';
+  el.rateShort.textContent = r.short.toFixed(2)+'%';
+  el.spread.textContent = r.spread.toFixed(2)+'%';
+  el.bondIdx.textContent = r.bondIndex.toFixed(2);
+  el.modeText.textContent = MODE_NAME[r.mode];
+  el.bondFlow.textContent = r.mode==='bondFlow'?'避险流入债券'
+    : r.mode==='equityFlow' ? '资金涌入股市'
+    : r.mode==='doubleBoom' ? '股债同步走强'
+    : r.mode==='doubleKill' ? '股债同步走弱'
+    : '资金均衡轮动';
+}
+function renderExpect(){
+  const e = state.expect;
+  el.expMain.textContent = e.mainExpect;
+  el.overExp.textContent = e.overExpect+'%';
+  if(e.bias>0.05){ el.gapText.textContent='数据超预期，利好修复'; el.gapText.className='tag-buy'; }
+  else if(e.bias<-0.05){ el.gapText.textContent='数据不及预期，利空消化'; el.gapText.className='tag-sell'; }
+  else { el.gapText.textContent='预期基本一致'; el.gapText.className='tag-neutral'; }
+}
+let sectorsBuilt = false;
+function selectGroup(gid){
+  /* 点板块 = 打开该板块的指数基金（ETF），看板块级 K 线；个股在下方 chips 切换 */
+  if(!state.sectors[gid]) state.current = (stocksOf(gid)[0]||{}).id || gid;
+  else state.current = gid;
+  render();
+}
+function renderSectors(){
+  /* DOM 只建一次：每拍重建会让 mousedown/mouseup 落在不同元素上，click 被吞掉 */
+  if(!sectorsBuilt){
+    el.sectors.innerHTML = '';
+    GROUPS.forEach(g=>{
+      const div = document.createElement('div');
+      div.className = 'sector';
+      div.dataset.gid = g.id;
+      div.innerHTML = `<div class="sn">${g.name}</div><div class="sc"></div>`;
+      div.title = g.type==='bond' ? '债券指数基金（可直接交易，用于对冲）'
+        : (g.name+'板块指数基金 · 点开看板块K线（ETF 只能做多，做空请到个股）');
+      div.onclick = ()=>selectGroup(g.id);
+      el.sectors.appendChild(div);
+    });
+    sectorsBuilt = true;
+  }
+  const curGroup = (cur()||{}).group || 'tech';
+  GROUPS.forEach(g=>{
+    const div = el.sectors.querySelector('[data-gid="'+g.id+'"]');
+    if(!div) return;
+    const base = g.type==='bond' ? state.sectors['bond'] : state.idx[g.id];
+    if(!base) return;
+    const chg = base.price/prevClose(base)-1;
+    div.classList.toggle('active', g.id===curGroup);
+    const sc = div.querySelector('.sc');
+    sc.className = 'sc ' + (chg>=0 ? 'up' : 'down');
+    sc.textContent = (chg>=0?'+':'') + (chg*100).toFixed(1) + '%';
+  });
+  renderStockChips();
+}
+
+/* 当前板块下的个股切换条：指数只看不买，买卖都落到个股 */
+let stockChipsFor = '';
+function renderStockChips(){
+  if(!el.stockChips) return;
+  const curSec = cur(); if(!curSec) return;
+  const gid = curSec.group;
+  if(gid === 'bond'){
+    el.stockChips.innerHTML = '<div class="stock-chip on" style="cursor:default">'
+      + '<div class="scn">债券指数（仅此一只，可作对冲）</div>'
+      + '<div class="scc">' + fmt(curSec.price) + '</div></div>';
+    stockChipsFor = 'bond';
+    return;
+  }
+  if(gid !== stockChipsFor){
+    el.stockChips.innerHTML = '';
+    const g = GROUP_MAP[gid] || {};
+    /* 第一条：该板块的指数基金（ETF），点开就是板块级 K 线 */
+    const fund = document.createElement('div');
+    fund.className = 'stock-chip etf';
+    fund.dataset.sid = gid;
+    fund.innerHTML = `<div class="scn">${g.fundName||'板块ETF'} <em class="etf-mark">ETF</em></div><div class="scc"></div>`;
+    fund.onclick = ()=>{ state.current = gid; render(); };
+    el.stockChips.appendChild(fund);
+
+    stocksOf(gid).forEach(st=>{
+      const div = document.createElement('div');
+      div.className = 'stock-chip';
+      div.dataset.sid = st.id;
+      div.innerHTML = `<div class="scn"><em class="st-mark" style="display:none"></em><span class="nm">${st.name}</span></div><div class="scc"></div>`;
+      div.onclick = ()=>{ state.current = st.id; state.lastOf[st.group] = st.id; render(); };
+      el.stockChips.appendChild(div);
+    });
+    stockChipsFor = gid;
+  }
+  /* 指数基金涨跌 + 选中态 */
+  const fundSec = state.idx[gid];
+  const fdiv = el.stockChips.querySelector('[data-sid="'+gid+'"]');
+  if(fundSec && fdiv){
+    const chg = fundSec.price/prevClose(fundSec)-1;
+    fdiv.classList.toggle('on', state.current===gid);
+    const fsc = fdiv.querySelector('.scc');
+    fsc.className = 'scc ' + (chg>=0?'up':'down');
+    fsc.textContent = (chg>=0?'+':'') + (chg*100).toFixed(1) + '%';
+  }
+  stocksOf(gid).forEach(st=>{
+    const sec = state.sectors[st.id];
+    const div = el.stockChips.querySelector('[data-sid="'+st.id+'"]');
+    if(!sec || !div) return;
+    const chg = sec.price/prevClose(sec)-1;
+    div.classList.toggle('on', st.id===state.current);
+    const scc = div.querySelector('.scc');
+    scc.className = 'scc ' + (chg>=0?'up':'down');
+    scc.textContent = (chg>=0?'+':'') + (chg*100).toFixed(1) + '%';
+    /* 风险警示状态可能中途变化（戴帽/摘帽），每拍同步标记 */
+    const mk = div.querySelector('.st-mark');
+    if(mk){
+      mk.style.display = sec.stFlag ? '' : 'none';
+      mk.textContent = sec.stFlag || '';
+    }
+    div.title = sec.stFlag
+      ? dispName(sec) + ' · 风险警示股，涨跌幅限制 ±5% · 退市风险 '+Math.round(sec.stRisk||0)+'/100'
+      : dispName(sec);
+  });
+}
+function prevClose(sec){
+  return sec.bars.length ? sec.bars[sec.bars.length-1].c : (sec.history[0]||sec.price);
+}
+function renderQuote(){
+  const sec = cur(), b = sec.curBar;
+  const chg = sec.price/prevClose(sec)-1;
+  const gname = (GROUP_MAP[sec.group]||{}).name || '债券';
+  const baseName = sec.kind==='index'
+    ? `${sec.fundName} ${sec.fundCode} · ${gname}板块指数`
+    : (sec.group==='bond' ? `${sec.name} ${sec.code}` : `${sec.name} ${sec.code} · ${gname}板块`);
+  el.coinName.innerHTML = (sec.stFlag ? `<em class="st-mark">${sec.stFlag}</em>` : '')
+    + baseName
+    + (sec.stFlag ? `<span class="st-risk">退市风险 ${Math.round(sec.stRisk||0)}/100 · 涨跌幅 ±5%</span>` : '');
+  if(el.quoteTag) el.quoteTag.textContent = sec.kind==='stock' ? '个股' : (sec.type==='bond' ? '债券ETF' : '指数基金');
+  el.price.textContent = fmt(sec.price);
+  el.changeTag.textContent = (chg>=0?'+':'')+(chg*100).toFixed(2)+'%';
+  el.changeTag.className = 'change '+(chg>=0?'up':'down');
+  el.open.textContent = fmt(b.o);
+  el.high.textContent = fmt(b.h);
+  el.low.textContent = fmt(b.l);
+  el.volume.textContent = fmtInt(b.v);
+  el.turnover.textContent = fmt(prevClose(sec));
+  el.midPrice.textContent = fmt(sec.price);
+}
+function renderBook(){
+  const sec = cur(), {bids,asks} = buildBook(sec);
+  el.bids.innerHTML=''; el.asks.innerHTML='';
+  bids.forEach(b=>el.bids.insertAdjacentHTML('beforeend',`<div class="book-row"><span class="pk">买</span><span class="pp">${fmt(b.price)}</span><span class="pq">${fmtInt(b.qty)}</span></div>`));
+  asks.forEach(a=>el.asks.insertAdjacentHTML('beforeend',`<div class="book-row"><span class="pk">卖</span><span class="pp">${fmt(a.price)}</span><span class="pq">${fmtInt(a.qty)}</span></div>`));
+  if(el.depthTag){
+    const d = sec.depth||1;
+    el.depthTag.textContent = '深度 '+d.toFixed(2)+'× · '+(d<0.75?'盘口偏薄':'挂单充足');
+    el.depthTag.className = 'mini-tag '+(d<0.75?'warn':'');
+  }
+  const tot = sec.bull+sec.bear||1;
+  el.powerBox.style.display = state.ui.showPower ? '' : 'none';
+  el.powerBull.style.width = (sec.bull/tot*100)+'%';
+  el.powerBear.style.width = (sec.bear/tot*100)+'%';
+  el.bullVal.textContent = fmtInt(sec.bull*100);
+  el.bearVal.textContent = fmtInt(sec.bear*100);
+}
+function renderPos(){
+  el.posList.innerHTML = '';
+  let any = false;
+  Object.keys(state.pos).forEach(id=>{
+    const p = state.pos[id];
+    if(p.qty<=0) return;
+    any = true;
+    const sec = state.sectors[id];
+    const pnlCls = p.pnl>=0?'up':'down';
+    const dirTxt = p.dir===1?'多仓':p.dir===-1?'空仓':'对冲';
+    el.posList.insertAdjacentHTML('beforeend',
+      `<div class="pos-item">
+        <div class="pi-main"><div class="pi-name">${labelOf(sec)} <span class="pi-sub">${(GROUP_MAP[sec.group]||{}).name||'债券'} · ${dirTxt} · ${p.qty.toFixed(2)}份</span></div>
+        <div class="pi-sub">成本 ${fmt(p.entry)} · 投入 ${fmt(p.bet)}</div></div>
+        <div class="pi-pnl ${pnlCls}">${p.pnl>=0?'+':''}${fmt(p.pnl)}</div>
+      </div>`);
+  });
+  if(!any) el.posList.innerHTML = '<div class="pos-empty">暂无持仓，可在多板块间分散配置，债券用于对冲股市风险</div>';
+}
+let newsSig = '';
+let newsTouching = false, newsPending = false, newsSettleTimer = null, newsTouchGuard = null;
+function updateNewsFade(){
+  const n = el.news; if(!n) return;
+  const top = n.scrollTop > 4;
+  const bot = n.scrollHeight - n.clientHeight - n.scrollTop > 4;
+  el.newsFadeTop.classList.toggle('show', top);
+  el.newsFadeBot.classList.toggle('show', bot);
+}
+function renderNews(force){
+  /* 用户手指还按在资讯上、或列表正在惯性滚动时不重建 DOM：
+     重建会把 scrollTop 打回 0，看起来就像"划到中间被卡住弹回去" */
+  if(!force && (newsTouching || newsPending)){ newsPending = true; return; }
+  const sig = state.newsFeed.map(n=>(n.tag||'')+'|'+(n.title||n.text||'')+'|'+(n.time||n.t||'')).join('|');
+  if(sig === newsSig && el.news.childElementCount > 0){ updateNewsFade(); return; }
+  newsSig = sig;
+  const keepTop = el.news.scrollTop;          // 记住滚动位置，重建后还原
+  el.news.innerHTML = '';
+  if(!state.newsFeed.length){
+    el.news.innerHTML = '<div class="news-empty">暂无资讯，市场正在等待新的宏观与行业信号</div>';
+    return;
+  }
+  state.newsFeed.forEach(n=>{
+    el.news.insertAdjacentHTML('beforeend',
+      `<div class="news-row">
+        <span class="news-tag ${(n.tag||'').indexOf('ST')===0 ? 'st' : ((n.tag==='退市风险') ? 'st' : (n.cls || (n.tag==='政策' ? 'policy' : 'neutral')))}">${n.tag||'资讯'}</span>
+        <div class="news-body"><div class="news-title">${n.title || n.text || ''}</div><div class="news-meta">${n.time || n.t || ''}${(n.scope && n.scope!=='market') ? ' · '+(STOCK_MAP[n.scope] ? '个股事件' : '板块事件') : ''}${n.extra?' · '+n.extra:''}</div></div>
+      </div>`);
+  });
+  if(keepTop > 0){
+    const maxTop = Math.max(0, el.news.scrollHeight - el.news.clientHeight);
+    el.news.scrollTop = Math.min(keepTop, maxTop);
+  }
+  updateNewsFade();
+}
+function bindNewsScroll(){
+  const n = el.news;
+
+  /* 手指按下/滚动期间暂缓资讯重建，松手（或惯性结束）400ms 后统一刷新；
+     这样滚动不会被 DOM 重建打断，也不会出现"划到中间就卡住" */
+  n.addEventListener('touchstart', ()=>{
+    newsTouching = true;
+    clearTimeout(newsTouchGuard);
+    /* 兜底：万一 touchend 没来（手势被系统吞掉），8 秒后强制复位，资讯不会永久停止更新 */
+    newsTouchGuard = setTimeout(()=>{ newsTouching = false; clearTimeout(newsSettleTimer);
+      newsSettleTimer = setTimeout(()=>{ if(newsPending){ newsPending = false; renderNews(true); } }, 200);
+    }, 8000);
+  }, {passive:true});
+  const settle = ()=>{
+    clearTimeout(newsTouchGuard);
+    newsTouching = false;
+    clearTimeout(newsSettleTimer);
+    newsSettleTimer = setTimeout(()=>{
+      if(newsPending){ newsPending = false; renderNews(true); }
+      updateNewsFade();
+    }, 400);
+  };
+  n.addEventListener('touchend', settle, {passive:true});
+  n.addEventListener('touchcancel', settle, {passive:true});
+  n.addEventListener('scroll', ()=>{
+    updateNewsFade();
+    if(newsTouching) return;                  // 手指还在屏上/惯性中，不触发刷新
+    clearTimeout(newsSettleTimer);
+    newsSettleTimer = setTimeout(()=>{
+      if(newsPending){ newsPending = false; renderNews(true); }
+    }, 400);
+  }, {passive:true});
+
+  /* 桌面滚轮：列表滚到头或本身滚不动时，不再抢滚轮，交给页面继续滚 */
+  n.addEventListener('wheel', e=>{
+    const noOverflow = n.scrollHeight - n.clientHeight <= 1;
+    const atTop = n.scrollTop <= 0.5;
+    const atBot = n.scrollHeight - n.clientHeight - n.scrollTop <= 0.5;
+    if(noOverflow || (atTop && e.deltaY < 0) || (atBot && e.deltaY > 0)) e.preventDefault();
+  }, {passive:false});
+}
+/* ============ 分时视图：每拍一条实时曲线 ============ */
+function drawTickChart(){
+  const sec = cur();
+  const canvas = el.chart, ctx = canvas.getContext('2d');
+  const w = canvas.width = canvas.offsetWidth, h = canvas.height = canvas.offsetHeight;
+  ctx.clearRect(0,0,w,h);
+  const ui = state.ui;
+
+  const m = Math.min(sec.history.length, sec.volHist.length);
+  const n = Math.min(state.chartRange, m);
+  const px = sec.history.slice(-n), vs = sec.volHist.slice(-n);
+  if(px.length < 2){ el.chartStat.textContent = '分时数据积累中…'; return; }
+
+  const showVol = ui.vol;
+  const volH = showVol ? Math.max(32, Math.round(h*0.24)) : 0;
+  const plotH = h - volH;
+  const padL = 2, padR = 44, padT = 10, padB = 12;
+  const plotW = Math.max(20, w - padL - padR);
+
+  const pos = state.pos[state.current];
+  const cost = (pos && pos.qty>0) ? pos.entry : 0;
+  const pc = prevClose(sec);
+
+  let lo = Math.min(...px), hi = Math.max(...px);
+  const pHi = hi, pLo = lo;              // 仅价格的真实高低（不受参考线影响）
+  const ext = x => { if(x==null||!isFinite(x)) return; if(x<lo) lo=x; if(x>hi) hi=x; };
+  ext(pc);
+  if(ui.cost && cost>0) ext(cost);
+  const range = (hi-lo)||1;
+  const yi = val => (plotH-padB) - ((val-lo)/range)*(plotH-padT-padB);
+  const xi = i => padL + (i/(n-1))*plotW;
+
+  /* 价格网格 + 右侧刻度 */
+  ctx.font='9px system-ui'; ctx.textAlign='right';
+  for(let k=0;k<=3;k++){
+    const val = lo + range*k/3, y = yi(val);
+    ctx.strokeStyle='rgba(138,149,168,.10)'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(padL+plotW,y); ctx.stroke();
+    ctx.fillStyle='rgba(138,149,168,.85)';
+    ctx.fillText(val.toFixed(1), w-3, y-2);
+  }
+
+  /* 成交量（每拍） */
+  if(showVol){
+    const vmax = Math.max(...vs, 1);
+    const vBase = h-8, vTop = plotH+5;
+    const vw = Math.max(1, Math.min(plotW/n*0.7, 9));
+    vs.forEach((v,i)=>{
+      const rise = i===0 ? true : px[i] >= px[i-1];
+      const hgt = (v/vmax)*(vBase-vTop-2);
+      ctx.fillStyle = rise ? 'rgba(240,84,76,.45)' : 'rgba(38,194,129,.45)';
+      ctx.fillRect(xi(i)-vw/2, vBase-hgt, vw, hgt);
+    });
+    ctx.strokeStyle='rgba(138,149,168,.22)'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(padL,plotH); ctx.lineTo(padL+plotW,plotH); ctx.stroke();
+    ctx.fillStyle='rgba(138,149,168,.75)'; ctx.textAlign='left';
+    ctx.fillText('成交量', padL+1, plotH+11);
+  }
+
+  /* 昨收参考线 */
+  if(isFinite(pc)){
+    const y = yi(pc);
+    if(y > padT-2 && y < plotH-padB+2){
+      ctx.strokeStyle='rgba(138,149,168,.55)'; ctx.lineWidth=1; ctx.setLineDash([5,4]);
+      ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(padL+plotW,y); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle='rgba(138,149,168,.9)'; ctx.textAlign='right';
+      ctx.fillText('昨收 '+pc.toFixed(2), padL+plotW-2, y-4);
+    }
+  }
+
+  /* 实时价格曲线 + 下方渐变 */
+  const up = px[px.length-1] >= px[0];
+  const col = up ? '#f0544c' : '#26c281';
+  const grad = ctx.createLinearGradient(0,padT,0,plotH-padB);
+  grad.addColorStop(0, up ? 'rgba(240,84,76,.22)' : 'rgba(38,194,129,.22)');
+  grad.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.moveTo(xi(0), plotH-padB);
+  px.forEach((v,i)=>ctx.lineTo(xi(i), yi(v)));
+  ctx.lineTo(xi(px.length-1), plotH-padB);
+  ctx.closePath(); ctx.fill();
+
+  ctx.strokeStyle=col; ctx.lineWidth=1.7; ctx.beginPath();
+  px.forEach((v,i)=>{ i===0?ctx.moveTo(xi(i),yi(v)):ctx.lineTo(xi(i),yi(v)); });
+  ctx.stroke();
+
+  /* 均价线（窗口内成交额加权均价） */
+  let pv=0, vv=0;
+  const vwap = px.map((val,i)=>{
+    const vol = Math.max(vs[i]||1, 1);
+    pv += val*vol; vv += vol;
+    return pv/vv;
+  });
+  ctx.strokeStyle='#f5c451'; ctx.lineWidth=1.3; ctx.beginPath();
+  vwap.forEach((val,i)=>{ i===0?ctx.moveTo(xi(i),yi(val)):ctx.lineTo(xi(i),yi(val)); });
+  ctx.stroke();
+
+  /* 持仓成本线 */
+  if(ui.cost && cost>0){
+    const y = yi(cost);
+    ctx.strokeStyle='rgba(232,237,245,.75)'; ctx.lineWidth=1.2; ctx.setLineDash([3,3]);
+    ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(padL+plotW,y); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle='rgba(232,237,245,.85)'; ctx.textAlign='right';
+    ctx.fillText('成本 '+cost.toFixed(2), padL+plotW-2, y-4);
+  }
+
+  /* 最新点 */
+  const last = px[px.length-1];
+  ctx.fillStyle=col; ctx.beginPath(); ctx.arc(xi(px.length-1), yi(last), 3, 0, Math.PI*2); ctx.fill();
+
+  /* 图例 */
+  ctx.font='9px system-ui'; ctx.textAlign='left';
+  const ly = plotH-10;
+  let lx = 3;
+  [['价格',col],['均价','#f5c451'],['昨收','rgba(138,149,168,.9)']].forEach(([t,c])=>{
+    ctx.fillStyle=c; ctx.fillRect(lx,ly-7,7,3); lx+=10;
+    ctx.fillStyle='rgba(138,149,168,.95)'; ctx.fillText(t,lx,ly-3);
+    lx+=ctx.measureText(t).width+9;
+  });
+
+  /* 统计 */
+  const pnl = (last/px[0]-1)*100;
+  const fair = fairValue(sec);
+  const prem = (sec.price/fair - 1)*100;
+  const premTxt = Math.abs(prem)<1.5 ? '估值合理' : (prem>0 ? '高估 '+prem.toFixed(1)+'%' : '低估 '+Math.abs(prem).toFixed(1)+'%');
+  const premCol = Math.abs(prem)<1.5 ? 'var(--muted)' : (prem>0 ? 'var(--up)' : 'var(--down)');
+  el.chartStat.innerHTML = `${n} 拍分时 · 高 ${pHi.toFixed(2)} · 低 ${pLo.toFixed(2)} · `
+    + `<span style="color:${pnl>=0?'var(--up)':'var(--down)'}">${pnl>=0?'+':''}${pnl.toFixed(2)}%</span>`
+    + ` · <span style="color:${premCol}">${premTxt}</span>`;
+}
+
+/* ============ K 线周期聚合：日 / 周（5日）/ 月（20日） ============ */
+function buildView(sec, range){
+  const P = state.ui.period;
+  const days = sec.bars.concat([sec.curBar]);
+  const fairDays = sec.fairBars.concat([fairValue(sec)]);
+  let bars, fairs, unit;
+  if(P === 'week' || P === 'month'){
+    const g = P === 'week' ? 5 : 20;
+    bars = []; fairs = [];
+    for(let i=0;i<days.length;i+=g){
+      const chunk = days.slice(i, i+g);
+      const fc = fairDays.slice(i, i+g);
+      bars.push({
+        o: chunk[0].o,
+        h: Math.max(...chunk.map(b=>b.h)),
+        l: Math.min(...chunk.map(b=>b.l)),
+        c: chunk[chunk.length-1].c,
+        v: chunk.reduce((a,b)=>a+b.v, 0)
+      });
+      fairs.push(fc[fc.length-1]);
+    }
+    unit = P === 'week' ? '周' : '月';
+  }else{
+    bars = days; fairs = fairDays; unit = '日';
+  }
+  const n = Math.min(range, bars.length);
+  return {view: bars.slice(-n), fairArr: fairs.slice(-n), unit};
+}
+
+function drawChart(){
+  if(state.ui.period === 'tick'){ drawTickChart(); return; }
+  const canvas = el.chart, ctx = canvas.getContext('2d');
+  const w = canvas.width = canvas.offsetWidth, h = canvas.height = canvas.offsetHeight;
+  ctx.clearRect(0,0,w,h);
+  const sec = cur(), ui = state.ui;
+  if(!sec) return;
+
+  /* 按当前周期取 K 线（含正在形成的当期） */
+  const {view, fairArr, unit} = buildView(sec, state.chartRange);
+  const n = view.length;
+  const closes = view.map(b=>b.c);
+
+  const maOf = p => closes.map((_,i)=>{
+    if(i<p-1) return null;
+    let sum=0; for(let k=i-p+1;k<=i;k++) sum += closes[k];
+    return sum/p;
+  });
+  const ma5 = maOf(5), ma20 = maOf(20);
+
+  const bandWin = Math.min(20, closes.length);
+  const band = closes.map((_,i)=>{
+    if(i<4) return null;
+    const win = Math.min(bandWin, i+1);
+    let s1=0,s2=0;
+    for(let k=i-win+1;k<=i;k++){ s1+=closes[k]; s2+=closes[k]*closes[k]; }
+    const mid=s1/win, sd=Math.sqrt(Math.max(0, s2/win-mid*mid));
+    return {mid, up:mid+2*sd, dn:mid-2*sd};
+  });
+
+  const showVol = ui.vol;
+  const volH = showVol ? Math.max(34, Math.round(h*0.24)) : 0;
+  const plotH = h - volH;
+  const padL = 2, padR = 44, padT = 10, padB = 12;
+  const plotW = Math.max(20, w - padL - padR);
+
+  let lo = Math.min(...view.map(b=>b.l)), hi = Math.max(...view.map(b=>b.h));
+  const ext = v => { if(v==null||!isFinite(v)) return; if(v<lo) lo=v; if(v>hi) hi=v; };
+  if(ui.fair) fairArr.forEach(ext);
+  if(ui.ma){ ma5.forEach(ext); ma20.forEach(ext); }
+  if(ui.band) band.forEach(b=>{ if(b){ ext(b.up); ext(b.dn); } });
+  const pos = state.pos[state.current];
+  const cost = (pos && pos.qty>0) ? pos.entry : 0;
+  if(ui.cost && cost>0) ext(cost);
+
+  const range = (hi-lo)||1;
+  state.chartMap = {lo, hi, plotH, padT, padB};   // 供"点图上价位挂单"使用
+  const yi = v => (plotH-padB) - ((v-lo)/range)*(plotH-padT-padB);
+  const bw = plotW/n;
+  const slot = Math.min(bw, plotW/20, 26);      // 根数少时限宽，避免 K 线稀疏散落
+  const cxOf = i => padL + plotW - (n - i - 0.5)*slot;  // 右侧对齐生长
+
+  /* —— 横向价格网格 + 右侧价格刻度（炒股软件观感） —— */
+  ctx.font = '9px system-ui'; ctx.textAlign = 'right';
+  for(let k=0;k<=3;k++){
+    const v = lo + range*k/3, y = yi(v);
+    ctx.strokeStyle='rgba(138,149,168,.10)'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(padL+plotW,y); ctx.stroke();
+    ctx.fillStyle='rgba(138,149,168,.85)';
+    ctx.fillText(v.toFixed(1), w-3, y-2);
+  }
+
+  /* —— 成交量（底部独立区） —— */
+  if(showVol){
+    const vmax = Math.max(...view.map(b=>b.v), 1);
+    const vBase = h-8, vTop = plotH+5;
+    const vw = Math.max(1, Math.min(bw*0.62, 10));
+    view.forEach((b,i)=>{
+      const rise = b.c >= b.o;
+      const hgt = (b.v/vmax)*(vBase-vTop-2);
+      ctx.fillStyle = rise ? 'rgba(240,84,76,.45)' : 'rgba(38,194,129,.45)';
+      ctx.fillRect(cxOf(i)-vw/2, vBase-hgt, vw, hgt);
+    });
+    ctx.strokeStyle='rgba(138,149,168,.22)'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(padL,plotH); ctx.lineTo(padL+plotW,plotH); ctx.stroke();
+    ctx.fillStyle='rgba(138,149,168,.75)'; ctx.textAlign='left';
+    ctx.fillText('成交量', padL+1, plotH+11);
+  }
+
+  /* —— 布林带 —— */
+  if(ui.band){
+    ctx.fillStyle='rgba(167,139,250,.14)';
+    ctx.beginPath();
+    let go=false;
+    band.forEach((b,i)=>{ if(!b) return; const x=cxOf(i), y=yi(b.up); if(!go){ctx.moveTo(x,y);go=true;} else ctx.lineTo(x,y); });
+    for(let i=band.length-1;i>=0;i--){ const b=band[i]; if(!b) continue; ctx.lineTo(cxOf(i), yi(b.dn)); }
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle='rgba(167,139,250,.60)'; ctx.lineWidth=1.1;
+    ['up','dn'].forEach(k=>{
+      ctx.beginPath(); let g=false;
+      band.forEach((b,i)=>{ if(!b) return; const x=cxOf(i), y=yi(b[k]); if(!g){ctx.moveTo(x,y);g=true;} else ctx.lineTo(x,y); });
+      ctx.stroke();
+    });
+  }
+
+  const lineOf = (series,color,dash,width)=>{
+    ctx.strokeStyle=color; ctx.lineWidth=width||1.4; ctx.setLineDash(dash||[]);
+    ctx.beginPath(); let g=false;
+    series.forEach((v,i)=>{ if(v==null) return; const x=cxOf(i), y=yi(v); if(!g){ctx.moveTo(x,y);g=true;} else ctx.lineTo(x,y); });
+    ctx.stroke(); ctx.setLineDash([]);
+  };
+  if(ui.ma){ lineOf(ma20,'#7aa2c8',[],1.5); lineOf(ma5,'#4da3ff',[],1.3); }
+  if(ui.fair && fairArr.length) lineOf(fairArr,'#f5c451',[5,4],1.6);
+
+  /* —— K 线蜡烛 —— */
+  const cw = Math.max(1.6, Math.min(12, slot*0.62));
+  view.forEach((b,i)=>{
+    const rise = b.c >= b.o;
+    const col = rise ? '#f0544c' : '#26c281';
+    const x = cxOf(i);
+    ctx.strokeStyle=col; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(x, yi(b.h)); ctx.lineTo(x, yi(b.l)); ctx.stroke();
+    const yO = yi(b.o), yC = yi(b.c);
+    const top = Math.min(yO,yC), hgt = Math.max(1.6, Math.abs(yC-yO));
+    ctx.fillStyle = rise ? 'rgba(240,84,76,.9)' : 'rgba(38,194,129,.9)';
+    ctx.fillRect(x-cw/2, top, cw, hgt);
+  });
+
+  /* —— 持仓成本线 —— */
+  if(ui.cost && cost>0){
+    const y = yi(cost);
+    ctx.strokeStyle='rgba(232,237,245,.75)'; ctx.lineWidth=1.2; ctx.setLineDash([3,3]);
+    ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(padL+plotW,y); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle='rgba(232,237,245,.85)'; ctx.textAlign='right';
+    ctx.fillText('成本 '+cost.toFixed(2), padL+plotW-2, y-4);
+  }
+
+  /* —— 最高 / 最低点标记 —— */
+  const arrMax = Math.max(...view.map(b=>b.h)), arrMin = Math.min(...view.map(b=>b.l));
+  const hiIdx = view.findIndex(b=>b.h===arrMax), loIdx = view.findIndex(b=>b.l===arrMin);
+  [[hiIdx,arrMax,'#f5c451'],[loIdx,arrMin,'#7aa2c8']].forEach(([idx,val,c])=>{
+    if(idx<0) return;
+    ctx.fillStyle=c; ctx.beginPath(); ctx.arc(cxOf(idx),yi(val),2.6,0,Math.PI*2); ctx.fill();
+    ctx.font='10px system-ui'; ctx.textAlign = idx<n/2 ? 'left':'right';
+    const lx2 = idx<n/2 ? clamp(cxOf(idx)+7,16,w-46) : clamp(cxOf(idx)-7,16,w-46);
+    ctx.fillText(val.toFixed(1), lx2, Math.max(14, yi(val)-6));
+  });
+
+  /* —— 图例 —— */
+  const legend=[];
+  if(ui.fair) legend.push(['估值','#f5c451']);
+  if(ui.ma && ma5.some(v=>v!=null)) legend.push(['MA5','#4da3ff']);
+  if(ui.ma && ma20.some(v=>v!=null)) legend.push(['MA20','#7aa2c8']);
+  if(ui.band && band.some(b=>b)) legend.push(['布林带','rgba(167,139,250,.95)']);
+  ctx.font='9px system-ui'; ctx.textAlign='left';
+  let lx=3; const ly = plotH-10;
+  legend.forEach(([t,c])=>{
+    ctx.fillStyle=c; ctx.fillRect(lx,ly-7,7,3); lx+=10;
+    ctx.fillStyle='rgba(138,149,168,.95)'; ctx.fillText(t,lx,ly-3);
+    lx+=ctx.measureText(t).width+9;
+  });
+
+  /* —— 统计 —— */
+  const pnl = (view[view.length-1].c/view[0].o - 1)*100;
+  const fairLast = fairArr.length ? fairArr[fairArr.length-1] : fairValue(sec);
+  const prem = (sec.price/fairLast - 1)*100;
+  const premTxt = Math.abs(prem)<1.5 ? '估值合理' : (prem>0 ? '高估 '+prem.toFixed(1)+'%' : '低估 '+Math.abs(prem).toFixed(1)+'%');
+  const premCol = Math.abs(prem)<1.5 ? 'var(--muted)' : (prem>0 ? 'var(--up)' : 'var(--down)');
+  el.chartStat.innerHTML = `${n} 根${unit}K · 高 ${arrMax.toFixed(2)} · 低 ${arrMin.toFixed(2)} · `
+    + `<span style="color:${pnl>=0?'var(--up)':'var(--down)'}">${pnl>=0?'+':''}${pnl.toFixed(2)}%</span>`
+    + ` · <span style="color:${premCol}">${premTxt}</span>`;
+}
+function applyLockState(){
+  const lock = state.preSim;
+  [el.btnBuy, el.btnSell, el.btnClose, el.btnAdd, el.btnReduce, el.btnCloseAll, el.btnLimit]
+    .forEach(b=>{ if(b) b.disabled = lock; });
+}
+function render(){
+  applyLockState();
+  renderStats(); renderMacro(); renderRates(); renderExpect();
+  renderRoundChip(); renderDayChip();
+  renderSectors(); renderQuote(); renderBook(); renderPos(); renderOrders(); renderDock(); renderNews();
+  renderPolicy(); drawChart();
+}
+
+/* ================= 结算 ================= */
+function showResult(pf){
+  const [rank,label] = grade(pf.total);
+  const r = (pf.total-CONFIG.startBalance)/CONFIG.startBalance*100;
+  el.modalRank.textContent = `${rank} 级 · ${label}`;
+  el.modalFinal.textContent = (r>=0?'+':'')+fmt(pf.total-CONFIG.startBalance);
+  el.modalFinal.className = 'final '+(r>=0?'up':'down');
+  el.modalTitle.textContent = '交易结束';
+  el.modalComment.textContent = `完成 ${state.trades} 笔交易，最终总资产 ${fmt(pf.total)}，累计收益率 ${r.toFixed(2)}%。`;
+  el.overlay.classList.add('show');
+}
+function reset(){
+  state.cash=CONFIG.startBalance; state.pos={}; state.trades=0; state.finished=false;
+  state.best=CONFIG.startBalance; state.newsFeed=[];
+  state.macro=initMacro();
+  state.rates={long:2.5,short:1.8,spread:0.7,bondIndex:100,mode:'balance'};
+  state.expect={mainExpect:'',bias:0,overExpect:0};
+  state.chartRange=CONFIG.chartRange;
+  state.log=[]; state.tickNo=0; state.orders=[];
+  state.policy={on:false, spend:1.0, tax:1.0, tilt:'neutral', rateMode:'hold', liqMode:'neutral',
+                supplyShock:0, shockType:null, shockPeak:0, shockDur:0, shockLeft:0, preset:null, lagIn:0, lagOut:30, apply:0, deficit:2.0, debt:35};
+  if(el.togglePolicy){ el.togglePolicy.textContent='关闭'; el.togglePolicy.classList.remove('on'); }
+  if(el.policyBox) el.policyBox.classList.remove('show');
+  state.sectors={}; state.idx={}; state.lastOf={};
+  state.current='tech';
+  seedMarket();
+  clearSave();
+  el.overlay.classList.remove('show');
+  applySpeed();
+  if(state.ui.preDays > 0) startPreSim(state.ui.preDays);
+  else render();
+}
+
+/* ================= 事件绑定 ================= */
+el.btnBuy.onclick = ()=>openPos(1);
+el.btnLimit.onclick = ()=>openOrderPanel(0);
+el.ordSubmit.onclick = ()=>{
+  placeOrder(orderSide, el.ordPrice.value);
+  closeOrderPanel();
+};
+el.ordCancel.onclick = closeOrderPanel;
+el.ordMask.onclick = closeOrderPanel;
+el.ordPrice.oninput = ()=>{
+  const sec = cur(), p = +el.ordPrice.value;
+  if(!p) { el.ordHint.textContent = '选择一个目标价，价格触及即自动成交'; return; }
+  orderSide = p <= sec.price ? 1 : -1;
+  el.ordSide.querySelectorAll('.chip').forEach(c=>c.classList.toggle('on', +c.dataset.side===orderSide));
+  el.ordHint.textContent = '目标价 ' + p.toFixed(2) + ' · 距现价 ' + ((p/sec.price-1)*100).toFixed(2) + '%';
+};
+el.ordQ1.onclick = ()=>{ el.ordPrice.value = (cur().price*0.99).toFixed(2); };
+el.ordQ2.onclick = ()=>{ el.ordPrice.value = cur().price.toFixed(2); };
+el.ordQ3.onclick = ()=>{ el.ordPrice.value = (cur().price*1.01).toFixed(2); };
+el.ordSide.querySelectorAll('.chip').forEach(c=>{
+  c.onclick = ()=>{
+    orderSide = +c.dataset.side;
+    el.ordSide.querySelectorAll('.chip').forEach(x=>x.classList.toggle('on', +x.dataset.side===orderSide));
+  };
+});
+el.chart.onclick = (e)=>{
+  const m = state.chartMap;
+  if(!m || state.ui.period==='tick') { toast('分时视图不支持点价，切到日/周/月 K 再点'); return; }
+  const rect = el.chart.getBoundingClientRect();
+  const y = (e.clientY || 0) - rect.top;
+  const t = (y - m.padT)/Math.max(1, m.plotH - m.padT - m.padB);
+  if(t < 0 || t > 1) return;
+  openOrderPanel(+(m.hi - t*(m.hi-m.lo)).toFixed(2));
+};
+el.btnSell.onclick = ()=>openPos(-1);
+el.btnClose.onclick = ()=>{ if(!canTrade()) return; closeSec(state.current); state.trades++; finishCheck(); render(); };
+el.btnAdd.onclick = addPos;
+el.btnReduce.onclick = ()=>reducePos(0.5);
+el.btnCloseAll.onclick = closeAll;
+/* 仓位比例：吸底条与挂单浮层共用一处状态 */
+[el.dockRatio, el.ordRatio].forEach(box=>{
+  if(!box) return;
+  box.querySelectorAll('[data-r]').forEach(b=>{
+    b.onclick = ()=>setRatio(+b.dataset.r);
+  });
+});
+setRatio(state.ratio);
+/* ---- 大手模式：政策工具箱交互 ---- */
+const newsChips = document.getElementById('newsChips');
+if(newsChips) newsChips.querySelectorAll('[data-nd]').forEach(c=>{
+  c.onclick = ()=>{
+    state.ui.newsDensity = c.dataset.nd;
+    newsChips.querySelectorAll('[data-nd]').forEach(x=>x.classList.toggle('on', x.dataset.nd===c.dataset.nd));
+    newsBudget = NEWS_DENSITY[c.dataset.nd].cap;      // 切换后立刻可用
+    renderNews(true);
+    toast('资讯密度：'+NEWS_DENSITY[c.dataset.nd].name);
+  };
+});
+
+el.togglePolicy.onclick = togglePolicyMode;
+el.policyBox.querySelectorAll('[data-pol]').forEach(b=>{
+  b.onclick = ()=>{
+    const P = state.policy, act = b.dataset.pol, step = 0.05;
+    if(act==='spend_up')   setPolicy({spend: clamp(+(P.spend+step).toFixed(2), 0.7, 1.3)}, '财政支出强度上调至 '+clamp(+(P.spend+step).toFixed(2),0.7,1.3).toFixed(2)+'×');
+    if(act==='spend_down') setPolicy({spend: clamp(+(P.spend-step).toFixed(2), 0.7, 1.3)}, '财政支出强度下调至 '+clamp(+(P.spend-step).toFixed(2),0.7,1.3).toFixed(2)+'×');
+    if(act==='tax_up')     setPolicy({tax: clamp(+(P.tax+step).toFixed(2), 0.85, 1.15)}, '综合税率上调至 '+clamp(+(P.tax+step).toFixed(2),0.85,1.15).toFixed(2)+'×');
+    if(act==='tax_down')   setPolicy({tax: clamp(+(P.tax-step).toFixed(2), 0.85, 1.15)}, '综合税率下调至 '+clamp(+(P.tax-step).toFixed(2),0.85,1.15).toFixed(2)+'×');
+  };
+});
+el.polTilt.querySelectorAll('.chip').forEach(c=>{
+  c.onclick = ()=>setPolicy({tilt:c.dataset.tilt},
+    '支出结构转向' + ({neutral:'均衡',infra:'基建',welfare:'民生',tech:'产业补贴'}[c.dataset.tilt]));
+});
+el.polRate.querySelectorAll('.chip').forEach(c=>{
+  c.onclick = ()=>setPolicy({rateMode:c.dataset.rate},
+    '政策利率取' + ({cut:'降息',hold:'维持',hike:'加息'}[c.dataset.rate]) + '取向');
+});
+el.polLiq.querySelectorAll('.chip').forEach(c=>{
+  c.onclick = ()=>setPolicy({liqMode:c.dataset.liq},
+    '流动性投放转为' + ({ease:'宽松',neutral:'中性',tight:'收紧'}[c.dataset.liq]));
+});
+el.policyBox.querySelectorAll('[data-shock]').forEach(b=>{
+  b.onclick = ()=>applyShock(b.dataset.shock);   // 事件式：按下即生效，不吃政策时滞
+});
+const presetRowEl = document.getElementById('polPreset');
+if(presetRowEl) presetRowEl.querySelectorAll('[data-preset]').forEach(b=>{
+  b.onclick = ()=>applyPreset(b.dataset.preset);
+});
+renderPolicy();
+
+el.btnReset.onclick = reset;
+el.btnAgain.onclick = reset;
+el.chartRange.querySelectorAll('button').forEach(b=>{
+  b.onclick = ()=>{
+    el.chartRange.querySelectorAll('button').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active');
+    state.chartRange = parseFloat(b.dataset.r);
+    drawChart();
+  };
+});
+window.addEventListener('resize', drawChart);
+
+/* ================= 对局设置 / 指标开关 ================= */
+function renderRoundChip(){
+  const limit = state.ui.rounds;
+  el.roundChip.textContent = '回合 ' + state.trades + (limit>0 ? ' / '+limit : ' / 无限制');
+}
+
+function renderDayChip(){
+  const sec = cur();
+  if(el.dayChip) el.dayChip.textContent = '第 ' + (sec.bars.length + 1) + ' 天';
+}
+
+/* ================= 开局预模拟历史市场 ================= */
+function startPreSim(days){
+  days = +days || 0;
+  if(days <= 0){
+    state.preSim = false;
+    el.preSimBox.classList.remove('show');
+    render();
+    return;
+  }
+  state.preSim = true;
+  state.preDaysTarget = days;
+  el.preSimBox.classList.add('show');
+  el.preSimFill.style.width = '0%';
+  el.preSimTxt.textContent = '正在预模拟历史市场 · 第 0 / ' + days + ' 个交易日';
+  render();
+
+  const step = ()=>{
+    if(!state.preSim) return;
+    const per = Math.max(1, state.ui.barsPerDay);
+    for(let i=0;i<per;i++) marketStep();          // 一帧推进一个交易日
+    const done = state.sectors[STOCKS[0].id].bars.length;
+    const pct = Math.min(100, done/days*100);
+    el.preSimFill.style.width = pct.toFixed(1) + '%';
+    el.preSimTxt.textContent = '正在预模拟历史市场 · 第 ' + Math.min(done,days) + ' / ' + days
+      + ' 个交易日（' + pct.toFixed(0) + '%）';
+    render();
+    if(done >= days) finishPreSim();
+    else setTimeout(step, 28);
+  };
+  setTimeout(step, 60);
+}
+function finishPreSim(){
+  state.preSim = false;
+  el.preSimBox.classList.remove('show');
+  el.preSimFill.style.width = '100%';
+  /* 预演只生成市场，不产生任何玩家持仓与成交记录 */
+  state.trades = 0; state.log = []; state.pos = {};
+  state.cash = CONFIG.startBalance; state.best = CONFIG.startBalance;
+  state.finished = false;
+  state.newsFeed = state.newsFeed.slice(-CONFIG.newsMax);
+  saveGame();
+  toast('历史市场模拟完成 · 现在可以开始交易');
+  render();
+}
+function setPreDays(v){
+  state.ui.preDays = v;
+  if(el.preChips){
+    el.preChips.querySelectorAll('.chip').forEach(x=>x.classList.toggle('on', +x.dataset.pre === v));
+  }
+}
+
+/* ================= 节奏：暂停 / 倍速 ================= */
+function applySpeed(){
+  if(state.timer){ clearInterval(state.timer); state.timer = null; }
+  if(state.paused) return;
+  state.timer = setInterval(tick, Math.max(120, Math.round(CONFIG.tickMs/state.speed)));
+}
+function bindPlayControls(){
+  /* 初始状态与实际速度同步 */
+  el.playSpeeds.forEach(x=>x.classList.toggle('active', +x.dataset.speed===state.speed));
+  el.btnPause.textContent = state.paused ? '继续' : '暂停';
+  el.btnPause.classList.toggle('active', state.paused);
+  el.btnPause.onclick = ()=>{
+    state.paused = !state.paused;
+    el.btnPause.textContent = state.paused ? '继续' : '暂停';
+    el.btnPause.classList.toggle('active', state.paused);
+    applySpeed();
+    toast(state.paused ? '已暂停，可从容看盘再决策' : '继续运行 · '+state.speed+'×');
+  };
+  el.playSpeeds.forEach(b=>{
+    b.onclick = ()=>{
+      state.speed = +b.dataset.speed;
+      state.paused = false;
+      el.btnPause.textContent='暂停'; el.btnPause.classList.remove('active');
+      el.playSpeeds.forEach(x=>x.classList.toggle('active', x===b));
+      applySpeed();
+      toast('已切换到 '+state.speed+'× 速度');
+    };
+  });
+  el.barChips.querySelectorAll('.chip').forEach(c=>{
+    c.classList.toggle('on', +c.dataset.bar===state.ui.barsPerDay);
+    c.onclick = ()=>{
+      state.ui.barsPerDay = +c.dataset.bar;
+      el.barChips.querySelectorAll('.chip').forEach(x=>x.classList.toggle('on', +x.dataset.bar===state.ui.barsPerDay));
+      Object.keys(state.sectors).forEach(id=>{ state.sectors[id].barTick = 0; });
+      render();
+      toast('每日 '+state.ui.barsPerDay+' 拍 · 约 '+(CONFIG.tickMs/state.speed/1000*state.ui.barsPerDay).toFixed(0)+' 秒一天');
+    };
+  });
+}
+function syncIndChips(){
+  const tickMode = state.ui.period === 'tick';
+  el.indChips.querySelectorAll('.chip').forEach(c=>{
+    const k = c.dataset.ind;
+    const dim = tickMode && (k==='fair' || k==='ma' || k==='band');
+    c.style.opacity = dim ? '.35' : '';
+    c.style.pointerEvents = dim ? 'none' : '';
+    c.title = dim ? '分时视图不显示该指标，切回 K 线视图可用' : '';
+  });
+}
+/* ================= 存档 / 分享 / 导出 ================= */
+const SAVE_KEY = 'tt_save_v8';
+const SEEN_KEY = 'tt_seen_v8';
+
+function saveGame(){
+  if(state.finished || state.preSim) return;
+  try{
+    const snap = {
+      v:8, at:Date.now(),
+      cash:state.cash, current:state.current, macro:state.macro, rates:state.rates,
+      expect:state.expect, pos:state.pos, ratio:state.ratio,
+      trades:state.trades, streak:state.streak, best:state.best, newsFeed:state.newsFeed,
+      chartRange:state.chartRange, ui:state.ui, paused:state.paused, speed:state.speed,
+      log:state.log, tickNo:state.tickNo,
+      sectors:(()=>{ const o={}; Object.keys(state.sectors).forEach(k=>{ if(k!==state.sectors[k].id || state.sectors[k].kind!=='index') o[k]=state.sectors[k]; }); return o; })(),
+      idx:state.idx, lastOf:state.lastOf, rumors:(state.rumors||[]).map(r=>({kind:r.kind,id:r.id,name:r.name,dir:r.dir,alpha:r.alpha,born:r.born,ttl:r.ttl,src:r.src,cred:r.cred})), depth:state.depth,
+      orders:state.orders||[], policy:state.policy
+    };
+    localStorage.setItem(SAVE_KEY, JSON.stringify(snap));
+  }catch(e){ /* 隐私模式或配额不足时静默失败 */ }
+}
+function clearSave(){
+  try{ localStorage.removeItem(SAVE_KEY); }catch(e){}
+}
+function loadGame(){
+  try{
+    const raw = localStorage.getItem(SAVE_KEY);
+    if(!raw) return false;
+    const d = JSON.parse(raw);
+    if(!d || d.v!==8 || !d.sectors) return false;
+    Object.assign(state, {
+      cash: d.cash, current: d.current, macro: d.macro, rates: d.rates,
+      expect: d.expect, pos: d.pos||{}, ratio: d.ratio||0.3,
+      trades: d.trades||0, streak: d.streak||0, best: d.best||CONFIG.startBalance,
+      newsFeed: d.newsFeed||[], chartRange: d.chartRange||CONFIG.chartRange,
+      log: d.log||[], tickNo: d.tickNo||0, paused: !!d.paused, speed: d.speed||1,
+      orders: d.orders||[],
+      policy: Object.assign({on:false,spend:1,tax:1,tilt:'neutral',rateMode:'hold',liqMode:'neutral',supplyShock:0,shockType:null,shockPeak:0,shockDur:0,shockLeft:0,preset:null,lagIn:0,lagOut:30,apply:0,deficit:2,debt:35}, d.policy||{}),
+      rumors: (d.rumors||[]).map(r=>Object.assign({}, r, {truth: Math.random() < (r.cred||0.4)})),
+      depth: d.depth||1.1,
+      finished: false
+    });
+    state.ui = Object.assign({}, UI_DEFAULT, d.ui||{});
+    state.sectors = {};
+    GROUPS.forEach(g=>{
+      if(g.type!=='bond') return;          // 股票板块指数随后从 idx 挂回
+      const sv = d.sectors[g.id];
+      state.sectors[g.id] = sv ? Object.assign(initEntity(g,'bond'), sv) : initEntity(g,'bond');
+    });
+    STOCKS.forEach(st=>{
+      const sv = d.sectors[st.id];
+      state.sectors[st.id] = sv ? Object.assign(initStock(st), sv) : initStock(st);
+    });
+    state.idx = {};
+    GROUPS.forEach(g=>{
+      if(g.type==='bond'){ state.idx[g.id]=state.sectors[g.id]; return; }
+      const sv = (d.idx||{})[g.id];
+      state.idx[g.id] = sv ? Object.assign(initIndex(g), sv) : initIndex(g);
+    });
+    GROUPS.forEach(g=>{ if(state.idx[g.id]) state.sectors[g.id] = state.idx[g.id]; });
+    state.lastOf = d.lastOf || {};
+    if(!state.sectors[state.current]) state.current = STOCKS[0].id;
+    return true;
+  }catch(e){ return false; }
+}
+
+function logTrade(action, sec, qty, price, amount, pnl){
+  state.log.push({
+    day: sec.bars.length + 1,
+    sector: labelOf(sec),
+    action,
+    price: price,
+    qty: qty,
+    amount: amount,
+    pnl: (pnl==null ? null : pnl),
+    cash: state.cash
+  });
+  if(state.log.length > 1000) state.log.shift();
+  saveGame();
+}
+
+function exportLog(){
+  if(!state.log.length){ toast('还没有成交记录，先做几笔交易吧'); return; }
+  const head = ['序号','交易日','板块','操作','成交价','数量','金额','已实现盈亏','剩余现金'];
+  const rows = state.log.map((l,i)=>[
+    i+1, l.day, l.sector, l.action,
+    l.price.toFixed(2), l.qty.toFixed(4), l.amount.toFixed(2),
+    (l.pnl==null ? '' : l.pnl.toFixed(2)), l.cash.toFixed(2)
+  ]);
+  const csv = [head, ...rows]
+    .map(r=>r.map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(','))
+    .join('\r\n');
+  const blob = new Blob(['\ufeff'+csv], {type:'text/csv;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = '天才交易员-对局日志-'+new Date().toISOString().slice(0,10)+'.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 2000);
+  toast('已导出 '+state.log.length+' 条成交记录（CSV）');
+}
+
+function shareResult(){
+  const pf = portfolio(), [rank,label] = grade(pf.total);
+  const r = (pf.total-CONFIG.startBalance)/CONFIG.startBalance*100;
+  const txt = '我在《天才交易员》跑了 '+state.trades+' 笔交易，'
+    + '评级 '+rank+' · '+label+'，总资产 '+fmt(pf.total)+'（'+(r>=0?'+':'')+r.toFixed(2)+'%），'
+    + '第 '+(cur().bars.length+1)+' 个交易日。宏观 + 利率债 + 预期差 + 对冲的模拟盘，你也来跑一局？'
+    + '（教学模拟，行情虚构，不构成投资建议）';
+  if(navigator.share){
+    navigator.share({title:'天才交易员 · 战绩', text:txt}).catch(()=>copyText(txt));
+  }else{
+    copyText(txt);
+  }
+}
+function copyText(t){
+  const ok = ()=>toast('战绩文案已复制，可直接粘贴分享');
+  const fallback = ()=>{
+    const ta = document.createElement('textarea');
+    ta.value = t; ta.style.position='fixed'; ta.style.opacity='0';
+    document.body.appendChild(ta); ta.select();
+    try{ document.execCommand('copy'); ok(); }catch(e){ toast('复制失败，请手动选择文本'); }
+    ta.remove();
+  };
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(t).then(ok).catch(fallback);
+  }else fallback();
+}
+
+function showWelcome(){ el.welcome.classList.add('show'); }
+function hideWelcome(){
+  el.welcome.classList.remove('show');
+  try{ localStorage.setItem(SEEN_KEY,'1'); }catch(e){}
+}
+
+function bindUiControls(){
+  el.periodChips.querySelectorAll('.chip').forEach(c=>{
+    c.classList.toggle('on', c.dataset.period === state.ui.period);
+    c.onclick = ()=>{
+      state.ui.period = c.dataset.period;
+      el.periodChips.querySelectorAll('.chip').forEach(x=>x.classList.toggle('on', x.dataset.period === state.ui.period));
+      syncIndChips();
+      render();
+    };
+  });
+  el.indChips.querySelectorAll('.chip').forEach(c=>{
+    const k = c.dataset.ind;
+    c.classList.toggle('on', !!state.ui[k]);
+    c.onclick = ()=>{
+      state.ui[k] = !state.ui[k];
+      c.classList.toggle('on', state.ui[k]);
+      drawChart();
+    };
+  });
+  if(el.evChips){
+    el.evChips.querySelectorAll('.chip').forEach(c=>{
+      c.classList.toggle('on', +c.dataset.ev===state.ui.eventLevel);
+      c.onclick = ()=>{
+        state.ui.eventLevel = +c.dataset.ev;
+        el.evChips.querySelectorAll('.chip').forEach(x=>x.classList.toggle('on', +x.dataset.ev===state.ui.eventLevel));
+        toast(state.ui.eventLevel===1?'事件密度：清淡（噪音少，适合练盘）'
+             : state.ui.eventLevel===3?'事件密度：嘈杂（突发事件与传闻更多）':'事件密度：标准');
+      };
+    });
+  }
+  el.roundChips.querySelectorAll('.chip').forEach(c=>{
+    c.classList.toggle('on', +c.dataset.round===state.ui.rounds);
+    c.onclick = ()=>{
+      state.ui.rounds = +c.dataset.round;
+      el.roundChips.querySelectorAll('.chip').forEach(x=>x.classList.toggle('on', +x.dataset.round===state.ui.rounds));
+      renderRoundChip();
+      toast(state.ui.rounds>0 ? '目标交易笔数已设为 '+state.ui.rounds+' 笔' : '已设为无限制模式');
+    };
+  });
+  el.preChips.querySelectorAll('.chip').forEach(c=>{
+    c.classList.toggle('on', +c.dataset.pre === state.ui.preDays);
+    c.onclick = ()=>{
+      setPreDays(+c.dataset.pre);
+      toast(state.ui.preDays>0
+        ? '开局将预演 '+state.ui.preDays+' 个交易日，点「重新开始」生效'
+        : '已关闭开局预演');
+    };
+  });
+  el.btnShare.onclick = shareResult;
+  el.btnShareResult.onclick = shareResult;
+  el.btnExport.onclick = exportLog;
+  el.btnClearSave.onclick = ()=>{
+    clearSave();
+    toast('存档已清除，刷新页面将从零开始');
+  };
+  el.btnHelp.onclick = showWelcome;
+  el.btnStart.onclick = ()=>{
+    hideWelcome();
+    if(pendingPreSim){ pendingPreSim = false; startPreSim(state.ui.preDays); }
+  };
+  if(el.togglePower){
+    el.togglePower.classList.toggle('on', state.ui.showPower);
+    el.togglePower.textContent = state.ui.showPower ? '显示中' : '已隐藏';
+    el.togglePower.onclick = ()=>{
+      state.ui.showPower = !state.ui.showPower;
+      el.togglePower.classList.toggle('on', state.ui.showPower);
+      el.togglePower.textContent = state.ui.showPower ? '显示中' : '已隐藏';
+      renderBook();
+    };
+  }
+}
+
+/* 屏幕适配诊断：显示当前 CSS 视口宽度与实际生效的布局模式 */
+function updateVpBadge(){
+  const el = document.getElementById('vpBadge');
+  if(!el) return;
+  const w = document.documentElement.clientWidth;
+  const mode = w >= 1180 ? '三栏' : w >= 480 ? '双栏' : '单栏';
+  el.textContent = 'v11.4 · 视口 ' + w + 'px · ' + mode;
+  el.title = 'CSS 像素宽度 ' + w + 'px，当前布局：' + mode;
+}
+window.addEventListener('resize', updateVpBadge);
+window.addEventListener('orientationchange', function(){ setTimeout(updateVpBadge, 300); });
+updateVpBadge();
+setTimeout(updateVpBadge, 500);
+
+let pendingPreSim = false;
+const restored = loadGame();
+bindUiControls();
+bindPlayControls();
+bindNewsScroll();
+syncIndChips();
+render();
+applySpeed();
+
+if(restored){
+  toast('已恢复上次对局 · 第 '+(cur().bars.length+1)+' 天');
+}else{
+  let seen = false;
+  try{ seen = !!localStorage.getItem(SEEN_KEY); }catch(e){}
+  if(!seen){ showWelcome(); pendingPreSim = true; }
+  else if(state.ui.preDays > 0) startPreSim(state.ui.preDays);
+}
+
+window.addEventListener('beforeunload', saveGame);
+document.addEventListener('visibilitychange', ()=>{ if(document.hidden) saveGame(); });
+</script>
+</body>
+</html>
